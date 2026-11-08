@@ -65,16 +65,26 @@ var BottleNet = window.BottleNet = window.BottleNet || {
   },
   // Kanal: sadece "değişti" haberi taşır; asıl veri hep RPC'den okunur (sahte mesaj zarar veremez)
   sub: function (ch, onMsg) {
-    var self = this, c = this.cfg, s = { closed: false, ws: null, tries: 0 };
+    var self = this, c = this.cfg, s = { closed: false, ws: null, tries: 0, queue: [] };
     var open = function () {
       if (s.closed || !c || !c.wsBase) return;
       var ws = s.ws = new WebSocket(c.wsBase + encodeURIComponent(ch) + '?api_key=' + encodeURIComponent(c.wsKey || '') + '&notify_self=0');
-      ws.onopen = function () { s.tries = 0; };
-      ws.onmessage = function (e) { var m = null; try { m = JSON.parse(e.data); } catch (x) { return; } if (m && m.t === 'bg') onMsg(m); };
+      ws.onopen = function () { s.tries = 0; var q = s.queue.splice(0); q.forEach(function (x) { try { ws.send(x); } catch (e) { /* */ } }); };
+      ws.onmessage = function (e) {
+        var m = null; try { m = JSON.parse(e.data); } catch (x) { return; }
+        if (!m) return;
+        var ev = m.event, data = m.data;
+        if (!ev && m.type === 'CLIENT_EVENT') { var inner = typeof m.data === 'string' ? JSON.parse(m.data) : m.data; ev = inner && inner.event; data = inner && inner.data; }
+        if (ev === 'client-bg' || ev === 'bg') onMsg(typeof data === 'string' ? JSON.parse(data) : (data || {}));
+      };
       ws.onclose = function () { if (!s.closed) setTimeout(open, Math.min(15000, 1000 * Math.pow(2, s.tries++))); };
     };
     open();
-    s.send = function (type, extra) { try { if (s.ws && s.ws.readyState === 1) s.ws.send(JSON.stringify(Object.assign({ t: 'bg', type: type }, extra || {}))); } catch (e) { /* */ } };
+    // Bağlantı henüz açılmadıysa sıraya al (odaya girer girmez "katıldım" haberi kaybolmasın)
+    s.send = function (type, extra) {
+      var msg = JSON.stringify({ event: 'client-bg', data: Object.assign({ type: type }, extra || {}) });
+      try { if (s.ws && s.ws.readyState === 1) s.ws.send(msg); else if (s.queue.length < 20) s.queue.push(msg); } catch (e) { /* */ }
+    };
     s.close = function () { s.closed = true; try { s.ws && s.ws.close(); } catch (e) { /* */ } };
     return s;
   },
@@ -120,7 +130,7 @@ BottleLobby.prototype.show = function () {
     var self = this;
     if (!this._lobbySub) this._lobbySub = BottleNet.sub('bottle-lobby', function () { self._refreshSoon(); });
     clearInterval(this._poll);
-    this._poll = setInterval(function () { if (self.ui.style.display !== 'none') self._loadRooms(); }, 15000);
+    this._poll = setInterval(function () { if (self.ui.style.display !== 'none' && !self._kbOpen) self._loadRooms(); }, 8000);
     this._loadRooms();
   } else this._renderList();
 };
@@ -129,6 +139,7 @@ BottleLobby.prototype.show = function () {
 BottleLobby.prototype._loadRooms = function () {
   var self = this;
   return BottleNet.rpc('bottle_list_rooms', { p_limit: 60 }).then(function (list) {
+    self._waiting = false;
     self.rooms = (list || []).map(function (r) { return self._mapRoom(r); });
     self._renderList();
   }).catch(function () { self.toast('Odalar yüklenemedi'); });
@@ -150,8 +161,10 @@ BottleLobby.prototype._enterNet = function (st) {
   this.roomId = st.id; this._lastRound = null;
   if (this._roomSub) this._roomSub.close();
   this._roomSub = BottleNet.sub('bottle-room-' + st.id, function () { self._syncRoom(); });
+  this._roomSub.send('joined');
   clearInterval(this._hb);
-  this._hb = setInterval(function () { BottleNet.rpc('bottle_heartbeat', {}).catch(function () { /* */ }); self._syncRoom(); }, 25000);
+  this._hbN = 0;
+  this._hb = setInterval(function () { if (++self._hbN % 5 === 0) BottleNet.rpc('bottle_heartbeat', {}).catch(function () { /* */ }); self._syncRoom(); }, 5000);
   if (this._lobbySub) this._lobbySub.send('rooms');
   this._enter(this._mapRoom(st), st);
 };
@@ -197,9 +210,8 @@ BottleLobby.prototype._leaveRoomNet = function () {
   var sub = this._roomSub;
   this.roomId = null; this._roomSub = null;
   clearInterval(this._hb);
-  if (sub) { sub.send('left'); setTimeout(function () { sub.close(); }, 300); }
-  var ls = this._lobbySub;
-  BottleNet.rpc('bottle_leave_room', {}).then(function () { if (ls) ls.send('rooms'); }).catch(function () { /* */ });
+  var ls = this._lobbySub, done = function () { if (sub) { sub.send('left'); setTimeout(function () { sub.close(); }, 800); } if (ls) ls.send('rooms'); };
+  BottleNet.rpc('bottle_leave_room', {}).then(done, done);
 };
 BottleLobby.prototype.hide = function () { this.ui.style.display = 'none'; };
 
@@ -212,9 +224,9 @@ BottleLobby.prototype._build = function () {
     '#lb-ui input{font-family:inherit;user-select:text;-webkit-user-select:text}',
     '#lb-ui:before{content:"";position:absolute;left:0;right:0;top:0;height:130px;background:linear-gradient(rgba(14,8,24,.6),rgba(14,8,24,0));pointer-events:none}',
     // üst
-    '.lb-top{position:absolute;left:0;right:0;top:0;z-index:2;display:grid;grid-template-columns:38px 1fr 38px;align-items:center;padding:max(12px,env(safe-area-inset-top)) var(--pad) 0;pointer-events:auto}',
-    '.lb-back{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.25)!important;display:flex;align-items:center;justify-content:center}.lb-back svg{width:20px;height:20px}',
-    '.lb-title{text-align:center;line-height:1.05}',
+    '.lb-top{position:absolute;left:0;right:0;top:0;z-index:2;display:grid;grid-template-columns:36px 1fr 36px;align-items:center;padding:calc(max(var(--sat,0px),env(safe-area-inset-top)) + 16px) var(--pad) 0;pointer-events:auto}',
+    '.lb-back{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.25)!important;display:flex;align-items:center;justify-content:center}.lb-back svg{width:20px;height:20px}',
+    '.lb-title{text-align:center;line-height:1.05;padding-top:10px}',
     '.lb-title b{display:block;font-size:clamp(19px,5.6vw,24px);font-weight:900;letter-spacing:.6px;background:linear-gradient(90deg,#ffe27a,#ff9ab8 55%,#c9adff);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 3px 10px rgba(255,90,150,.45))}',
     '.lb-title small{display:block;margin-top:5px;font-size:10px;font-weight:800;letter-spacing:2.6px;color:rgba(255,255,255,.72)}',
     '.lb-hero{flex:none;height:clamp(170px,34vh,380px)}',
@@ -238,7 +250,7 @@ BottleLobby.prototype._build = function () {
     '.lb-chips{display:flex;gap:8px;padding:12px var(--pad) 6px;overflow-x:auto;scrollbar-width:none;flex:none}.lb-chips::-webkit-scrollbar{display:none}',
     '.lb-chips button{flex:none;height:32px;padding:0 14px!important;border-radius:10px;background:rgba(255,255,255,.12)!important;border:1px solid rgba(255,255,255,.18)!important;color:rgba(255,255,255,.9);font-size:13px;font-weight:700}',
     '.lb-chips button.on{background:linear-gradient(135deg,#9b7bff,#6a4cf5)!important;border-color:transparent!important;color:#fff;box-shadow:0 4px 12px rgba(106,76,245,.4)}',
-    '.lb-list{flex:1;min-height:0;overflow-y:auto;padding:8px var(--pad) max(18px,env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch;scrollbar-width:none}.lb-list::-webkit-scrollbar{display:none}',
+    '.lb-list{flex:1;min-height:0;overflow-y:auto;padding:8px var(--pad) calc(max(18px,env(safe-area-inset-bottom)) + var(--kb,0px));-webkit-overflow-scrolling:touch;scrollbar-width:none}.lb-list::-webkit-scrollbar{display:none}',
     '.lb-room{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:10px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);animation:lbIn .28s both}',
     '@keyframes lbIn{from{opacity:0;transform:translateY(8px)}}',
     '.lb-r-av{width:44px;height:44px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;box-shadow:0 0 0 2px rgba(255,255,255,.35);overflow:hidden}',
@@ -252,17 +264,17 @@ BottleLobby.prototype._build = function () {
     '.lb-cnt{font-weight:800;color:#fff}',
     '.lb-st{display:inline-flex;align-items:center;gap:4px}.lb-st:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}',
     '.lb-st.wait{color:#4ade80}.lb-st.play{color:#fbbf24}',
-    '.lb-join{flex:none;height:34px;min-width:64px;padding:0 14px!important;border-radius:11px;font-size:13px;font-weight:800;background:linear-gradient(135deg,#9b7bff,#6a4cf5)!important;box-shadow:0 4px 12px rgba(106,76,245,.35)}',
+    '.lb-join{flex:none;height:34px;min-width:64px;padding:0 14px!important;border-radius:11px;font-size:13px;font-weight:800;background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 4px 12px rgba(255,79,134,.35)}',
     '.lb-join:active{transform:scale(.95)}.lb-join:disabled{background:rgba(255,255,255,.12)!important;color:rgba(255,255,255,.5)!important;box-shadow:none}',
     '.lb-empty{text-align:center;padding:36px 16px;color:rgba(255,255,255,.75);font-size:14px;font-weight:600;line-height:1.6}.lb-empty b{color:#ffd34d}',
     // ayrı sayfa: Oda Kur (şeffaf)
     '.lb-page{position:fixed;top:0;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;z-index:30;display:flex;flex-direction:column;color:#fff;background:rgba(20,10,36,.5);-webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%);transform:translateX(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1);pointer-events:auto}',
     '@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.lb-page{background:rgba(26,14,44,.96)}}',
     '.lb-page.show{transform:none}',
-    '.lb-pg-top{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;padding:max(12px,env(safe-area-inset-top)) var(--pad) 8px;flex:none}',
-    '.lb-pg-top h3{margin:0;text-align:center;font-size:17px;font-weight:900}',
-    '.lb-pg-back{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.25)!important;display:flex;align-items:center;justify-content:center}.lb-pg-back svg{width:20px;height:20px}',
-    '.lb-pg-body{flex:1;min-height:0;overflow-y:auto;padding:6px var(--pad) 16px;scrollbar-width:none}.lb-pg-body::-webkit-scrollbar{display:none}',
+    '.lb-pg-top{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;padding:calc(max(var(--sat,0px),env(safe-area-inset-top)) + 16px) var(--pad) 6px;flex:none}',
+    '.lb-pg-top h3{margin:0;text-align:center;font-size:15.5px;font-weight:900}',
+    '.lb-pg-back{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.25)!important;display:flex;align-items:center;justify-content:center}.lb-pg-back svg{width:18px;height:18px}',
+    '.lb-pg-body{flex:1;min-height:0;overflow-y:auto;padding:6px var(--pad) calc(16px + var(--kb,0px));scrollbar-width:none}.lb-pg-body::-webkit-scrollbar{display:none}',
     '.lb-preview{display:flex;align-items:center;gap:14px;padding:16px;border-radius:20px;background:linear-gradient(135deg,rgba(123,92,255,.85),rgba(180,107,255,.8) 60%,rgba(255,111,168,.8));border:1px solid rgba(255,255,255,.25)}',
     '.lb-preview .tb{flex:none;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center}',
     '.lb-preview .st{fill:none;stroke:#fff;stroke-width:1.6;stroke-dasharray:3 2.4}.lb-preview .me{fill:#ffd34d}',
@@ -285,13 +297,13 @@ BottleLobby.prototype._build = function () {
     '.lb-otp input{width:clamp(46px,13vw,56px);height:clamp(52px,14.5vw,60px);border-radius:14px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);text-align:center;font-size:24px;font-weight:800;color:#fff;outline:0;box-sizing:border-box;padding:0}',
     '.lb-otp input:focus{border-color:rgba(255,255,255,.65);background:rgba(255,255,255,.16)}.lb-otp.bad input{border-color:#ff6b7d}',
     '.lb-pin-wrap{overflow:hidden;max-height:0;opacity:0;transition:max-height .25s,opacity .2s}.lb-pin-wrap.show{max-height:140px;opacity:1}',
-    '.lb-pg-foot{flex:none;padding:10px var(--pad) max(16px,env(safe-area-inset-bottom))}',
+    '.lb-pg-foot{flex:none;padding:10px var(--pad) max(16px,env(safe-area-inset-bottom))}.kb .lb-pg-foot{display:none}',
     '.lb-cta{width:100%;height:52px;border-radius:15px;font-size:16px;font-weight:900;background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 10px 22px rgba(255,79,134,.35);transition:transform .1s}',
     '.lb-cta:active{transform:scale(.98)}',
     '.lb-err{min-height:18px;margin-top:10px;text-align:center;color:#ff8a98;font-size:12.5px;font-weight:700}',
     '.lb-shake{animation:lbShake .35s}@keyframes lbShake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}',
     // şifre penceresi (şeffaf)
-    '.lb-modal{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(10,5,20,.45);opacity:0;pointer-events:none;transition:opacity .2s}',
+    '.lb-modal{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;padding:20px 20px calc(20px + var(--kb,0px));background:rgba(10,5,20,.45);opacity:0;pointer-events:none;transition:opacity .2s}',
     '.lb-modal.show{opacity:1;pointer-events:auto}',
     '.lb-dlg{width:100%;max-width:330px;box-sizing:border-box;background:rgba(44,24,70,.72);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.2);border-radius:22px;padding:22px 18px 12px;text-align:center;color:#fff;transform:scale(.92);transition:transform .22s cubic-bezier(.2,.9,.3,1.2);box-shadow:0 20px 50px rgba(10,4,24,.45)}',
     '.lb-modal.show .lb-dlg{transform:none}',
@@ -307,6 +319,7 @@ BottleLobby.prototype._build = function () {
     '.lb-phone:after{content:"";position:absolute;left:50%;bottom:4px;width:9px;height:3px;border-radius:2px;background:#fff;transform:translateX(-50%)}',
     '@keyframes lbRot{0%,25%{transform:rotate(0)}70%,100%{transform:rotate(-90deg)}}',
     '.lb-trans p{margin:0;font-size:16px;font-weight:900}.lb-trans small{font-size:12px;color:rgba(255,255,255,.65);font-weight:700}',
+    '@media (max-height:720px){.lb-f-lbl{margin:14px 2px 7px}.lb-preview{padding:12px}.lb-preview .tb{width:64px;height:64px}.lb-caps button{padding:9px 0 8px!important}.lb-privs button{padding:9px 12px!important}.lb-field{height:44px}}',
     '@media (max-height:640px){.lb-hero{height:28vh}.lb-head{padding-top:14px}.lb-chips{padding-top:10px}}',
     '@media (max-width:370px){.lb-room{gap:10px;padding:11px}.lb-r-av{width:40px;height:40px}.lb-join{min-width:58px;padding:0 12px!important}}',
   ].join('');
@@ -441,6 +454,7 @@ BottleLobby.prototype._renderList = function () {
     return true;
   });
   this.$('lb-count').textContent = this.rooms.length;
+  if (this._waiting) { this.listEl.innerHTML = '<div class="lb-empty">Odalar yükleniyor…</div>'; return; }
   if (!list.length) {
     this.listEl.innerHTML = '<div class="lb-empty">' + (this.rooms.length ? 'Aramana uygun oda bulunamadı.' : 'Henüz açık oda yok.') +
       '<br>Hemen <b>Oda Kur</b>, arkadaşların gelsin!</div>';
@@ -449,14 +463,11 @@ BottleLobby.prototype._renderList = function () {
   this.listEl.innerHTML = list.map(function (r, n) {
     var o = r.owner || r.players[0] || { id: r.id, name: '?' };
     var full = r.players.length >= r.capacity;
-    var stack = r.players.slice(0, 3).map(function (p) {
-      return '<span class="lb-mini" style="background:' + lbColor(p.id) + '">' + lbEsc(p.name.charAt(0).toUpperCase()) + '</span>';
-    }).join('');
     return '<div class="lb-room" style="animation-delay:' + Math.min(n, 8) * 0.035 + 's">' +
       '<div class="lb-r-av" style="background:' + lbColor(o.id) + '">' +
       (o.avatar ? '<img src="' + lbEsc(o.avatar) + '" alt="">' : lbEsc(o.name.charAt(0).toUpperCase())) + '</div>' +
       '<div class="lb-r-mid"><div class="lb-r-name"><span>' + lbEsc(r.name) + '</span>' + (r.locked ? lbLock('#ffd34d') : '') + '</div>' +
-      '<div class="lb-r-meta"><span class="lb-stack">' + stack + '</span><span class="lb-cnt">' + r.players.length + '/' + r.capacity + '</span>' +
+      '<div class="lb-r-meta"><span class="lb-cnt">' + r.players.length + '/' + r.capacity + '</span>' +
       '<span class="lb-st ' + (r.status === 'play' ? 'play">Oyunda' : 'wait">Bekliyor') + '</span></div></div>' +
       '<button class="lb-join" data-id="' + lbEsc(r.id) + '"' + (full ? ' disabled>Dolu' : '>Katıl') + '</button></div>';
   }).join('');
@@ -613,6 +624,22 @@ BottleLobby.prototype._back = function () {
   this.toast('Uygulamaya dönülüyor…');
 };
 
+// Flutter: klavye yüksekliği (px). Klavye açıkken 3D çizim durur → klavye akıcı açılır.
+BottleLobby.prototype.setKeyboard = function (h) {
+  h = Math.max(0, h | 0);
+  this.ui.style.setProperty('--kb', h + 'px');
+  this.ui.classList.toggle('kb', h > 0);
+  var open = h > 0;
+  if (open !== this._kbOpen) {
+    this._kbOpen = open;
+    if (this.game) { if (open) this.game.pause(); else this.game.resume(); }
+  }
+  if (open) {
+    var a = document.activeElement;
+    if (a && a.scrollIntoView) setTimeout(function () { try { a.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* */ } }, 60);
+  }
+};
+
 BottleLobby.prototype.toast = function (msg) {
   var t = this.$('lb-toast');
   t.textContent = msg;
@@ -632,6 +659,7 @@ BottleLobby.prototype._post = function (type, data) {
 
 // Demo masalar (sunucu bağlanınca setRooms ile gelecek)
 BottleLobby.prototype._demoRooms = function () {
+  if (window.ZabuBridge) { this.rooms = []; this._waiting = true; return; }
   var caps = [6, 4, 6, 2, 6, 4, 6, 2, 4, 6];
   var fill = [5, 2, 3, 1, 6, 3, 2, 2, 1, 4];
   var lock = [false, false, true, false, false, true, false, false, true, false];
@@ -655,6 +683,8 @@ BottleLobby.prototype._api = function () {
     // Sunucu: masa listesi [{id, name, capacity, locked, status:'wait'|'play', owner, players:[{id,name,avatar,gender}]}]
     setRooms: function (list) { self.rooms = (list || []).map(function (r) { r.players = r.players || []; return r; }); self._renderList(); },
     toast: function (m) { self.toast(m); },
+    setKeyboard: function (h) { self.setKeyboard(h); },
+    setInsets: function (top) { document.documentElement.style.setProperty('--sat', (top | 0) + 'px'); self.ui.style.setProperty('--sat', (top | 0) + 'px'); },
     show: function () { self.show(); },
   };
 };
