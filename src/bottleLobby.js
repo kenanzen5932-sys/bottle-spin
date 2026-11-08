@@ -125,13 +125,14 @@ BottleLobby.prototype.show = function () {
   if (this.game) this.game.setMode('lobby');
   this.ui.style.display = '';
   this._closeModals();
-  this._leaveRoomNet();
+  var leaving = this._leaveRoomNet();
   if (BottleNet.ready()) {
     var self = this;
     if (!this._lobbySub) this._lobbySub = BottleNet.sub('bottle-lobby', function () { self._refreshSoon(); });
     clearInterval(this._poll);
     this._poll = setInterval(function () { if (self.ui.style.display !== 'none' && !self._kbOpen) self._loadRooms(); }, 8000);
-    this._loadRooms();
+    this._renderList();                       // bekletmeden (çıktığım oda listeden düşmüş haliyle)
+    (leaving || Promise.resolve()).then(function () { self._loadRooms(); });
   } else this._renderList();
 };
 
@@ -206,12 +207,18 @@ BottleLobby.prototype._netNext = function () {
     .catch(function (e) { self.game && self.game._banner('<span class="bg-hint">' + lbEsc(lbErrText(e)) + '</span>'); });
 };
 BottleLobby.prototype._leaveRoomNet = function () {
-  if (!this.roomId) return;
-  var sub = this._roomSub;
+  if (!this.roomId) return null;
+  var sub = this._roomSub, id = this.roomId, me = BottleNet.cfg && BottleNet.cfg.userId;
   this.roomId = null; this._roomSub = null;
   clearInterval(this._hb);
+  // Yerel liste: beni odadan çıkar, oda boş kaldıysa listeden sil (sunucu da siliyor)
+  this.rooms = this.rooms.filter(function (r) {
+    if (r.id !== id) return true;
+    r.players = r.players.filter(function (p) { return p.id !== me; });
+    return r.players.length > 0;
+  });
   var ls = this._lobbySub, done = function () { if (sub) { sub.send('left'); setTimeout(function () { sub.close(); }, 800); } if (ls) ls.send('rooms'); };
-  BottleNet.rpc('bottle_leave_room', {}).then(done, done);
+  return BottleNet.rpc('bottle_leave_room', {}).then(done, done);
 };
 BottleLobby.prototype.hide = function () { this.ui.style.display = 'none'; };
 
@@ -268,7 +275,7 @@ BottleLobby.prototype._build = function () {
     '.lb-join:active{transform:scale(.95)}.lb-join:disabled{background:rgba(255,255,255,.12)!important;color:rgba(255,255,255,.5)!important;box-shadow:none}',
     '.lb-empty{text-align:center;padding:36px 16px;color:rgba(255,255,255,.75);font-size:14px;font-weight:600;line-height:1.6}.lb-empty b{color:#ffd34d}',
     // ayrı sayfa: Oda Kur (şeffaf)
-    '.lb-page{position:fixed;top:0;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;z-index:30;display:flex;flex-direction:column;color:#fff;background:rgba(20,10,36,.5);-webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%);transform:translateX(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1);pointer-events:auto}',
+    '.lb-page{position:fixed;top:0;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;z-index:30;display:flex;flex-direction:column;color:#fff;background:linear-gradient(180deg,rgba(30,16,52,.94),rgba(16,8,30,.97));transform:translateX(105%);will-change:transform;transition:transform .32s cubic-bezier(.2,.8,.2,1);pointer-events:auto}',
     '@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.lb-page{background:rgba(26,14,44,.96)}}',
     '.lb-page.show{transform:none}',
     '.lb-pg-top{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;padding:calc(max(var(--sat,0px),env(safe-area-inset-top)) + 16px) var(--pad) 6px;flex:none}',
@@ -279,26 +286,26 @@ BottleLobby.prototype._build = function () {
     '.lb-preview .tb{flex:none;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center}',
     '.lb-preview .st{fill:none;stroke:#fff;stroke-width:1.6;stroke-dasharray:3 2.4}.lb-preview .me{fill:#ffd34d}',
     '.lb-preview b{display:block;font-size:17px;font-weight:900;word-break:break-word}.lb-preview small{display:block;margin-top:5px;font-size:12.5px;font-weight:600;opacity:.92}',
-    '.lb-f-lbl{display:block;margin:22px 2px 9px;font-size:13px;font-weight:800;color:rgba(255,255,255,.82)}',
+    '.lb-f-lbl{display:block;margin:16px 2px 8px;font-size:12.5px;font-weight:800;color:rgba(255,255,255,.82)}',
     '.lb-field{display:flex;align-items:center;gap:8px;height:50px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);box-sizing:border-box}',
     '.lb-field:focus-within{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.14)}',
     '.lb-field input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:15px;font-weight:600;color:#fff}.lb-field input::placeholder{color:rgba(255,255,255,.45)}',
     '.lb-field span{font-size:11.5px;color:rgba(255,255,255,.5);font-weight:700}',
     '.lb-caps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}',
-    '.lb-caps button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 0 10px!important;border-radius:14px;background:rgba(255,255,255,.1)!important;border:1px solid rgba(255,255,255,.18)!important;font-size:13px;font-weight:800;transition:.15s}',
+    '.lb-caps button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0 8px!important;border-radius:12px;background:rgba(255,255,255,.1)!important;border:1px solid rgba(255,255,255,.18)!important;font-size:12px;font-weight:800;transition:.15s}',
     '.lb-caps .st{fill:rgba(255,255,255,.45)}.lb-caps button.on{background:rgba(155,123,255,.3)!important;border-color:#c4b2ff!important;box-shadow:0 0 0 1px #c4b2ff inset}.lb-caps button.on .st{fill:#ffd34d}',
     '.lb-privs{display:flex;flex-direction:column;gap:10px}',
-    '.lb-privs button{display:flex;align-items:center;gap:12px;padding:12px 14px!important;border-radius:14px;background:rgba(255,255,255,.1)!important;border:1px solid rgba(255,255,255,.18)!important;text-align:left;transition:.15s}',
-    '.lb-privs i{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex:none}.lb-privs i svg{width:20px;height:20px}',
-    '.lb-privs span{flex:1;min-width:0}.lb-privs b{display:block;font-size:14.5px;font-weight:800}.lb-privs small{display:block;margin-top:2px;font-size:12px;color:rgba(255,255,255,.65);font-weight:600}',
+    '.lb-privs button{display:flex;align-items:center;gap:10px;padding:9px 12px!important;border-radius:12px;background:rgba(255,255,255,.1)!important;border:1px solid rgba(255,255,255,.18)!important;text-align:left;transition:.15s}',
+    '.lb-privs i{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex:none}.lb-privs i svg{width:17px;height:17px}',
+    '.lb-privs span{flex:1;min-width:0}.lb-privs b{display:block;font-size:13.5px;font-weight:800}.lb-privs small{display:block;margin-top:1px;font-size:11px;color:rgba(255,255,255,.65);font-weight:600}',
     '.lb-privs em{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.45);box-sizing:border-box;flex:none;transition:.15s}',
     '.lb-privs button.on{background:rgba(155,123,255,.26)!important;border-color:#c4b2ff!important}.lb-privs button.on em{border:6px solid #c4b2ff}',
     '.lb-otp{display:flex;gap:10px;justify-content:center}',
-    '.lb-otp input{width:clamp(46px,13vw,56px);height:clamp(52px,14.5vw,60px);border-radius:14px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);text-align:center;font-size:24px;font-weight:800;color:#fff;outline:0;box-sizing:border-box;padding:0}',
+    '.lb-otp input{width:clamp(42px,12vw,50px);height:clamp(46px,13vw,54px);border-radius:12px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);text-align:center;font-size:21px;font-weight:800;color:#fff;outline:0;box-sizing:border-box;padding:0}',
     '.lb-otp input:focus{border-color:rgba(255,255,255,.65);background:rgba(255,255,255,.16)}.lb-otp.bad input{border-color:#ff6b7d}',
     '.lb-pin-wrap{overflow:hidden;max-height:0;opacity:0;transition:max-height .25s,opacity .2s}.lb-pin-wrap.show{max-height:140px;opacity:1}',
     '.lb-pg-foot{flex:none;padding:10px var(--pad) max(16px,env(safe-area-inset-bottom))}.kb .lb-pg-foot{display:none}',
-    '.lb-cta{width:100%;height:52px;border-radius:15px;font-size:16px;font-weight:900;background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 10px 22px rgba(255,79,134,.35);transition:transform .1s}',
+    '.lb-cta{width:100%;height:48px;border-radius:14px;font-size:15px;font-weight:900;background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 10px 22px rgba(255,79,134,.35);transition:transform .1s}',
     '.lb-cta:active{transform:scale(.98)}',
     '.lb-err{min-height:18px;margin-top:10px;text-align:center;color:#ff8a98;font-size:12.5px;font-weight:700}',
     '.lb-shake{animation:lbShake .35s}@keyframes lbShake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}',
@@ -346,12 +353,9 @@ BottleLobby.prototype._build = function () {
     // ── Oda Kur (ayrı sayfa)
     '<div class="lb-page" id="lb-create"><div class="lb-pg-top"><button class="lb-pg-back" id="lb-create-back" aria-label="Geri">' + LB_IC.back + '</button>' +
     '<h3>Oda Kur</h3><span></span></div><div class="lb-pg-body">' +
-    '<div class="lb-preview"><div class="tb" id="lb-pv-tb"></div><div><b id="lb-pv-name"></b><small id="lb-pv-meta"></small></div></div>' +
-    '<label class="lb-f-lbl" for="lb-name">Oda adı</label>' +
-    '<div class="lb-field"><input id="lb-name" maxlength="24" placeholder="Örn: Gece Sohbeti"><span id="lb-name-n">0/24</span></div>' +
     '<span class="lb-f-lbl">Kaç kişilik?</span><div class="lb-caps" id="lb-cap">' +
-    '<button data-v="2">' + lbTable(2, 46) + '2 Kişi</button><button data-v="4">' + lbTable(4, 46) + '4 Kişi</button>' +
-    '<button data-v="6" class="on">' + lbTable(6, 46) + '6 Kişi</button></div>' +
+    '<button data-v="2">' + lbTable(2, 34) + '2 Kişi</button><button data-v="4">' + lbTable(4, 34) + '4 Kişi</button>' +
+    '<button data-v="6" class="on">' + lbTable(6, 34) + '6 Kişi</button></div>' +
     '<span class="lb-f-lbl">Kimler girebilir?</span><div class="lb-privs" id="lb-priv">' +
     '<button data-v="open" class="on"><i>' + LB_IC.globe + '</i><span><b>Herkese Açık</b><small>Herkes masaya oturabilir</small></span><em></em></button>' +
     '<button data-v="lock"><i>' + lbLock('#fff') + '</i><span><b>Şifreli</b><small>Sadece şifreyi bilenler girer</small></span><em></em></button></div>' +
@@ -402,7 +406,6 @@ BottleLobby.prototype._build = function () {
     $('lb-pin-wrap').classList.toggle('show', v === 'lock');
     if (v === 'lock') setTimeout(function () { self.otpNew.focus(); }, 260);
   });
-  $('lb-name').addEventListener('input', function () { $('lb-name-n').textContent = this.value.length + '/24'; self._preview(); });
   $('lb-create-back').addEventListener('click', function () { self._closeModals(); });
   $('lb-create-go').addEventListener('click', function () { self._sfx(); self._create(); });
   // Şifre
@@ -516,28 +519,22 @@ BottleLobby.prototype._quick = function () {
 
 BottleLobby.prototype._openCreate = function () {
   var $ = this.$;
-  $('lb-name').value = '';
-  $('lb-name-n').textContent = '0/24';
   $('lb-create-err').textContent = '';
   this.otpNew.clear();
-  this._preview();
   $('lb-create').classList.add('show');
+  if (this.game) this.game.pause();
 };
 
 BottleLobby.prototype._createOpts = function () {
   var $ = this.$;
   return {
-    name: $('lb-name').value.trim() || (this.user.name + ' Masası'),
+    name: this.user.name + ' Masası',
     cap: +$('lb-cap').querySelector('.on').getAttribute('data-v'),
     locked: $('lb-priv').querySelector('.on').getAttribute('data-v') === 'lock',
   };
 };
 
 BottleLobby.prototype._preview = function () {
-  var o = this._createOpts(), $ = this.$;
-  $('lb-pv-tb').innerHTML = lbTable(o.cap, 70, 1);
-  $('lb-pv-name').textContent = o.name;
-  $('lb-pv-meta').textContent = o.cap + ' kişilik · ' + (o.locked ? 'Şifreli' : 'Herkese açık');
 };
 
 BottleLobby.prototype._create = function () {
@@ -550,7 +547,7 @@ BottleLobby.prototype._create = function () {
   this._post('room_create', { name: o.name, capacity: o.cap, locked: o.locked });
   if (BottleNet.ready()) {
     var self = this;
-    BottleNet.rpc('bottle_create_room', { p_name: o.name, p_capacity: o.cap, p_pin: o.locked ? pin : null })
+    BottleNet.rpc('bottle_create_room', { p_name: null, p_capacity: o.cap, p_pin: o.locked ? pin : null })
       .then(function (st) { self._enterNet(st); })
       .catch(function (e) { self.$('lb-create-err').textContent = lbErrText(e); });
     return;
@@ -614,6 +611,7 @@ BottleLobby.prototype._enter = function (r, st) {
 };
 
 BottleLobby.prototype._closeModals = function () {
+  if (this.game && this.$ && this.$('lb-create').classList.contains('show') && !this._kbOpen) this.game.resume();
   [].forEach.call(this.ui.querySelectorAll('.lb-modal.show,.lb-page.show'), function (m) { m.classList.remove('show'); });
 };
 
