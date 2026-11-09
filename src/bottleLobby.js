@@ -157,7 +157,7 @@ BottleLobby.prototype.show = function () {
       self._refreshSoon();
     });
     clearInterval(this._poll);
-    this._poll = setInterval(function () { if (self.ui.style.display !== 'none' && !self._kbOpen) self._loadRooms(); }, 5000);
+    this._poll = setInterval(function () { if (self.ui.style.display !== 'none' && !self._kbOpen) self._loadRooms(); }, 12000);
     this._renderList();                       // bekletmeden (çıktığım oda listeden düşmüş haliyle)
     (leaving || Promise.resolve()).then(function () { self._loadRooms(); });
   } else this._renderList();
@@ -193,7 +193,7 @@ BottleLobby.prototype._mapRoom = function (r) {
 // Masaya otur (sunucu cevabı = oda durumu)
 BottleLobby.prototype._enterNet = function (st) {
   var self = this;
-  this.roomId = st.id; this._lastRound = null; this._chatId = 0;
+  this.roomId = st.id; this._lastRound = null; this._chatId = 0; this._isOwner = null;
   this._fetchChat(true);
   if (this._roomSub) this._roomSub.close();
   this._roomSub = BottleNet.sub('bottle-room-' + st.id, function (m) {
@@ -204,7 +204,7 @@ BottleLobby.prototype._enterNet = function (st) {
   this._roomSub.send('joined');
   clearInterval(this._hb);
   this._hbN = 0;
-  this._hb = setInterval(function () { if (++self._hbN % 5 === 0) BottleNet.rpc('bottle_heartbeat', {}).catch(function () { /* */ }); self._syncRoom(); }, 5000);
+  this._hb = setInterval(function () { if (++self._hbN % 6 === 0) BottleNet.rpc('bottle_heartbeat', {}).catch(function () { /* */ }); self._syncRoom(); }, 10000);
   if (this._lobbySub) this._lobbySub.send('rooms');
   this._enter(this._mapRoom(st), st);
 };
@@ -227,6 +227,8 @@ BottleLobby.prototype._applyRoom = function (st) {
   if (g.capacity !== st.capacity) g.setCapacity(st.capacity);
   g.setPlayers(st.players.map(function (p) { return { id: p.id, name: p.name || 'Oyuncu', avatar: p.avatar || '', gender: p.gender, seat: p.seat }; }), st.owner_id, me);
   g._serverCountdown = st.countdown_end ? st.countdown_end - BottleNet.offset : 0;
+  var owner = st.owner_id === me;
+  if (owner !== this._isOwner) { this._isOwner = owner; this._post('owner', { is: owner }); }
   g.setClosed(!!st.closed);
   if (st.spin && st.round !== this._lastRound) {
     this._lastRound = st.round;
