@@ -267,6 +267,10 @@ BottleGame.prototype.setMode = function (mode) {
   }
   if (this.ui) this.ui.style.display = lobby ? 'none' : '';
   this.app.autoRender = !lobby && !this._paused; // lobide 30 FPS (pil dostu)
+  // Lobide 3D sadece arka plan → daha düşük çözünürlük (daha hızlı, pil dostu)
+  var dpr = window.devicePixelRatio || 1;
+  this.app.graphicsDevice.maxPixelRatio = Math.min(dpr, lobby ? 1.25 : 1.75);
+  if (this.app.resizeCanvas) this.app.resizeCanvas();
   this._placeCamera();
   this._post('orientation', { mode: lobby ? 'portrait' : 'landscape' });
 };

@@ -139,7 +139,7 @@ BottleLobby.prototype.show = function () {
 // ── Sunucu: oda listesi / oda durumu ──
 BottleLobby.prototype._loadRooms = function () {
   var self = this;
-  return BottleNet.rpc('bottle_list_rooms', { p_limit: 60 }).then(function (list) {
+  return BottleNet.rpc('bottle_list_rooms', { p_limit: 100 }).then(function (list) {
     self._waiting = false;
     self.rooms = (list || []).map(function (r) { return self._mapRoom(r); });
     self._renderList();
@@ -259,7 +259,7 @@ BottleLobby.prototype._build = function () {
     '.lb-chips button.on{background:linear-gradient(135deg,#9b7bff,#6a4cf5)!important;border-color:transparent!important;color:#fff;box-shadow:0 4px 12px rgba(106,76,245,.4)}',
     '.lb-list{flex:1;min-height:0;overflow-y:auto;padding:8px var(--pad) calc(max(18px,env(safe-area-inset-bottom)) + var(--kb,0px));-webkit-overflow-scrolling:touch;scrollbar-width:none}.lb-list::-webkit-scrollbar{display:none}',
     '.lb-room{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:10px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);animation:lbIn .28s both}',
-    '@keyframes lbIn{from{opacity:0;transform:translateY(8px)}}',
+    '@keyframes lbIn{from{opacity:0;transform:translateY(8px)}}.lb-room.na{animation:none}','.lb-more{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 0 18px;font-size:12px;font-weight:700;color:rgba(255,255,255,.65)}','.lb-more i{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;animation:lbSpin .7s linear infinite}','.lb-room{contain:layout paint}',
     '.lb-r-av{width:44px;height:44px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;box-shadow:0 0 0 2px rgba(255,255,255,.35);overflow:hidden}',
     '.lb-r-av img{width:100%;height:100%;object-fit:cover}',
     '.lb-r-mid{flex:1;min-width:0}',
@@ -307,7 +307,7 @@ BottleLobby.prototype._build = function () {
     '.lb-pg-foot{flex:none;padding:10px var(--pad) max(16px,env(safe-area-inset-bottom))}.kb .lb-pg-foot{display:none}',
     '.lb-cta{width:100%;height:48px;border-radius:14px;font-size:15px;font-weight:900;background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 10px 22px rgba(255,79,134,.35);transition:transform .1s}',
     '.lb-cta:active{transform:scale(.98)}',
-    '.lb-err{min-height:18px;margin-top:10px;text-align:center;color:#ff8a98;font-size:12.5px;font-weight:700}',
+    '.lb-err{min-height:16px;margin:8px 0 8px;text-align:center;color:#ff8a98;font-size:12.5px;font-weight:700}',
     '.lb-shake{animation:lbShake .35s}@keyframes lbShake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}',
     // şifre penceresi (şeffaf)
     '.lb-modal{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;padding:20px 20px calc(20px + var(--kb,0px));background:rgba(10,5,20,.45);opacity:0;pointer-events:none;transition:opacity .2s}',
@@ -360,8 +360,7 @@ BottleLobby.prototype._build = function () {
     '<button data-v="open" class="on"><i>' + LB_IC.globe + '</i><span><b>Herkese Açık</b><small>Herkes masaya oturabilir</small></span><em></em></button>' +
     '<button data-v="lock"><i>' + lbLock('#fff') + '</i><span><b>Şifreli</b><small>Sadece şifreyi bilenler girer</small></span><em></em></button></div>' +
     '<div class="lb-pin-wrap" id="lb-pin-wrap"><span class="lb-f-lbl">4 haneli şifre</span><div class="lb-otp" id="lb-otp-new">' + otp + '</div></div>' +
-    '<div class="lb-err" id="lb-create-err"></div></div>' +
-    '<div class="lb-pg-foot"><button class="lb-cta" id="lb-create-go">Odayı Kur</button></div></div>' +
+    '<div class="lb-err" id="lb-create-err"></div><button class="lb-cta" id="lb-create-go">Odayı Kur</button></div></div>' +
     // ── Şifreli odaya giriş
     '<div class="lb-modal" id="lb-pass"><div class="lb-dlg"><div class="lk">' + lbLock('#fff') + '</div><h3>Şifreli Oda</h3><p id="lb-pass-name"></p>' +
     '<div class="lb-otp" id="lb-otp">' + otp + '</div><div class="lb-err" id="lb-pass-err"></div>' +
@@ -382,12 +381,18 @@ BottleLobby.prototype._build = function () {
     var b = this; b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin');
     self._post('rooms_refresh', {}); self._renderList();
   });
-  $('lb-q').addEventListener('input', function () { self.query = this.value.trim().toLowerCase(); self._renderList(); });
+  $('lb-q').addEventListener('input', function () {
+    var v = this.value; clearTimeout(self._qt);
+    self._qt = setTimeout(function () { self.query = v.trim().toLowerCase(); self._renderList(); }, 180);
+  });
   $('lb-chips').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     [].forEach.call(this.children, function (x) { x.classList.toggle('on', x === b); });
     self.filter = b.getAttribute('data-f'); self._renderList();
   });
+  this.listEl.addEventListener('scroll', function () {
+    if (this.scrollTop + this.clientHeight > this.scrollHeight - 160) self._more(false);
+  }, { passive: true });
   this.listEl.addEventListener('click', function (e) {
     var b = e.target.closest('.lb-join'); if (!b) return;
     self._sfx(); self._join(b.getAttribute('data-id'));
@@ -457,23 +462,42 @@ BottleLobby.prototype._renderList = function () {
     return true;
   });
   this.$('lb-count').textContent = this.rooms.length;
+  if (this._waiting || !list.length) this._sig = null;
   if (this._waiting) { this.listEl.innerHTML = '<div class="lb-empty">Odalar yükleniyor…</div>'; return; }
   if (!list.length) {
     this.listEl.innerHTML = '<div class="lb-empty">' + (this.rooms.length ? 'Aramana uygun oda bulunamadı.' : 'Henüz açık oda yok.') +
       '<br>Hemen <b>Oda Kur</b>, arkadaşların gelsin!</div>';
     return;
   }
-  this.listEl.innerHTML = list.map(function (r, n) {
+  // Liste değişmediyse hiç dokunma (yoklamada titreme/yeniden çizim yok)
+  var sig = f + '|' + q + '|' + list.map(function (r) { return r.id + ':' + r.players.length + ':' + r.status + ':' + r.name; }).join(',');
+  if (sig === this._sig && this.listEl.firstChild) return;
+  var first = !this._sig;
+  this._sig = sig;
+  this._list = list;
+  this._shown = 0;
+  this.listEl.innerHTML = '';
+  this._more(first);
+};
+
+var LB_PAGE = 15;
+BottleLobby.prototype._more = function (anim) {
+  var list = this._list || [], from = this._shown, to = Math.min(list.length, from + LB_PAGE);
+  if (from >= to) return;
+  this._shown = to;
+  var old = this.listEl.querySelector('.lb-more');
+  if (old) old.remove();
+  this.listEl.insertAdjacentHTML('beforeend', list.slice(from, to).map(function (r, n) {
     var o = r.owner || r.players[0] || { id: r.id, name: '?' };
     var full = r.players.length >= r.capacity;
-    return '<div class="lb-room" style="animation-delay:' + Math.min(n, 8) * 0.035 + 's">' +
+    return '<div class="lb-room' + (anim ? '' : ' na') + '" style="animation-delay:' + Math.min(n, 8) * 0.035 + 's">' +
       '<div class="lb-r-av" style="background:' + lbColor(o.id) + '">' +
       (o.avatar ? '<img src="' + lbEsc(o.avatar) + '" alt="">' : lbEsc(o.name.charAt(0).toUpperCase())) + '</div>' +
       '<div class="lb-r-mid"><div class="lb-r-name"><span>' + lbEsc(r.name) + '</span>' + (r.locked ? lbLock('#ffd34d') : '') + '</div>' +
       '<div class="lb-r-meta"><span class="lb-cnt">' + r.players.length + '/' + r.capacity + '</span>' +
       '<span class="lb-st ' + (r.status === 'play' ? 'play">Oyunda' : 'wait">Bekliyor') + '</span></div></div>' +
       '<button class="lb-join" data-id="' + lbEsc(r.id) + '"' + (full ? ' disabled>Dolu' : '>Katıl') + '</button></div>';
-  }).join('');
+  }).join('') + (to < list.length ? '<div class="lb-more"><i></i>Yükleniyor…</div>' : ''));
 };
 
 // ════════════════════════ AKIŞ ════════════════════════
