@@ -256,7 +256,7 @@ BottleLobby.prototype._build = function () {
     '.lb-search input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:14px;font-weight:600;color:#fff}.lb-search input::placeholder{color:rgba(255,255,255,.55)}',
     '.lb-chips{display:flex;gap:8px;padding:12px var(--pad) 6px;overflow-x:auto;scrollbar-width:none;flex:none}.lb-chips::-webkit-scrollbar{display:none}',
     '.lb-chips button{flex:none;height:32px;padding:0 14px!important;border-radius:10px;background:rgba(255,255,255,.12)!important;border:1px solid rgba(255,255,255,.18)!important;color:rgba(255,255,255,.9);font-size:13px;font-weight:700}',
-    '.lb-chips button.on{background:linear-gradient(135deg,#9b7bff,#6a4cf5)!important;border-color:transparent!important;color:#fff;box-shadow:0 4px 12px rgba(106,76,245,.4)}',
+    '.lb-chips button.on{background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;border-color:transparent!important;color:#fff;box-shadow:0 4px 12px rgba(255,79,134,.38)}',
     '.lb-list{flex:1;min-height:0;overflow-y:auto;padding:8px var(--pad) calc(max(18px,env(safe-area-inset-bottom)) + var(--kb,0px));-webkit-overflow-scrolling:touch;scrollbar-width:none}.lb-list::-webkit-scrollbar{display:none}',
     '.lb-room{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:10px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);animation:lbIn .28s both}',
     '@keyframes lbIn{from{opacity:0;transform:translateY(8px)}}.lb-room.na{animation:none}','.lb-more{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 0 18px;font-size:12px;font-weight:700;color:rgba(255,255,255,.65)}','.lb-more i{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;animation:lbSpin .7s linear infinite}','.lb-room{contain:layout paint}',
@@ -281,7 +281,7 @@ BottleLobby.prototype._build = function () {
     '.lb-pg-top{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;padding:calc(max(var(--sat,0px),env(safe-area-inset-top)) + 16px) var(--pad) 6px;flex:none}',
     '.lb-pg-top h3{margin:0;text-align:center;font-size:15.5px;font-weight:900}',
     '.lb-pg-back{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.25)!important;display:flex;align-items:center;justify-content:center}.lb-pg-back svg{width:18px;height:18px}',
-    '.lb-pg-body{flex:1;min-height:0;overflow-y:auto;padding:6px var(--pad) calc(16px + var(--kb,0px));scrollbar-width:none}.lb-pg-body::-webkit-scrollbar{display:none}',
+    '.lb-passhead{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:14px 10px 4px}','.lb-passhead .lk{width:58px;height:58px;border-radius:18px;margin-bottom:6px;background:linear-gradient(135deg,#ffd76a,#ffa53d);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(255,165,61,.35)}','.lb-passhead .lk svg{width:28px;height:28px}.lb-passhead b{font-size:17px;font-weight:900;word-break:break-word}.lb-passhead small{font-size:12px;font-weight:600;color:rgba(255,255,255,.65)}','.lb-pg-body{flex:1;min-height:0;overflow-y:auto;padding:6px var(--pad) calc(16px + var(--kb,0px));scrollbar-width:none}.lb-pg-body::-webkit-scrollbar{display:none}',
     '.lb-preview{display:flex;align-items:center;gap:14px;padding:16px;border-radius:20px;background:linear-gradient(135deg,rgba(123,92,255,.85),rgba(180,107,255,.8) 60%,rgba(255,111,168,.8));border:1px solid rgba(255,255,255,.25)}',
     '.lb-preview .tb{flex:none;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center}',
     '.lb-preview .st{fill:none;stroke:#fff;stroke-width:1.6;stroke-dasharray:3 2.4}.lb-preview .me{fill:#ffd34d}',
@@ -345,8 +345,8 @@ BottleLobby.prototype._build = function () {
     '<div class="lb-head"><h2>Odalar</h2><span class="lb-badge" id="lb-count">0</span>' +
     '<button class="lb-ref" id="lb-ref" aria-label="Yenile">' + LB_IC.refresh + '</button>' +
     '<button class="lb-new" id="lb-create-btn"><span class="pi">' + LB_IC.plus + '</span>Oda Kur</button></div>' +
-    '<div class="lb-chips" id="lb-chips"><button class="on" data-f="all">Tümü</button><button data-f="2">2 Kişi</button>' +
-    '<button data-f="4">4 Kişi</button><button data-f="6">6 Kişi</button><button data-f="free">Boş Yer Var</button><button data-f="lock">Şifreli</button></div>' +
+    '<div class="lb-chips" id="lb-chips"><button data-f="2">2 Kişi</button>' +
+    '<button data-f="4">4 Kişi</button><button data-f="6">6 Kişi</button><button data-f="lock">Şifreli</button></div>' +
     '<div class="lb-list" id="lb-list"></div></div>' +
     // ── Oda Kur (ayrı sayfa)
     '<div class="lb-page" id="lb-create"><div class="lb-pg-top"><button class="lb-pg-back" id="lb-create-back" aria-label="Geri">' + LB_IC.back + '</button>' +
@@ -360,9 +360,11 @@ BottleLobby.prototype._build = function () {
     '<div class="lb-pin-wrap" id="lb-pin-wrap"><span class="lb-f-lbl">4 haneli şifre</span><div class="lb-otp" id="lb-otp-new">' + otp + '</div></div>' +
     '<div class="lb-err" id="lb-create-err"></div><button class="lb-cta" id="lb-create-go">Odayı Kur</button></div></div>' +
     // ── Şifreli odaya giriş
-    '<div class="lb-modal" id="lb-pass"><div class="lb-dlg"><div class="lk">' + lbLock('#fff') + '</div><h3>Şifreli Oda</h3><p id="lb-pass-name"></p>' +
-    '<div class="lb-otp" id="lb-otp">' + otp + '</div><div class="lb-err" id="lb-pass-err"></div>' +
-    '<button class="lb-cta" id="lb-pass-go">Odaya Gir</button><button class="lb-cancel" id="lb-pass-x">Vazgeç</button></div></div>' +
+    '<div class="lb-page" id="lb-pass"><div class="lb-pg-top"><button class="lb-pg-back" id="lb-pass-x" aria-label="Geri">' + LB_IC.back + '</button>' +
+    '<h3>Şifreli Oda</h3><span></span></div><div class="lb-pg-body">' +
+    '<div class="lb-passhead"><div class="lk">' + lbLock('#fff') + '</div><b id="lb-pass-name"></b><small>Bu masa şifreli. Girmek için şifreyi yaz.</small></div>' +
+    '<span class="lb-f-lbl">4 haneli şifre</span><div class="lb-otp" id="lb-otp">' + otp + '</div>' +
+    '<div class="lb-err" id="lb-pass-err"></div><button class="lb-cta" id="lb-pass-go">Odaya Gir</button></div></div>' +
     '<div class="lb-toast" id="lb-toast"></div>' +
     '<div class="lb-trans" id="lb-trans"><div class="lb-phone"></div><p>Masaya geçiliyor…</p><small>Telefonunu yan çevir</small></div>';
   document.body.appendChild(ui);
@@ -380,8 +382,9 @@ BottleLobby.prototype._build = function () {
   });
   $('lb-chips').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
-    [].forEach.call(this.children, function (x) { x.classList.toggle('on', x === b); });
-    self.filter = b.getAttribute('data-f'); self._renderList();
+    var on = !b.classList.contains('on');
+    [].forEach.call(this.children, function (x) { x.classList.toggle('on', on && x === b); });
+    self.filter = on ? b.getAttribute('data-f') : 'all'; self._renderList();
   });
   this.listEl.addEventListener('scroll', function () {
     if (this.scrollTop + this.clientHeight > this.scrollHeight - 160) self._more(false);
@@ -411,7 +414,6 @@ BottleLobby.prototype._build = function () {
   this.otpJoin = this._otp($('lb-otp'), function () { self._checkPass(); });
   $('lb-pass-go').addEventListener('click', function () { self._sfx(); self._checkPass(); });
   $('lb-pass-x').addEventListener('click', function () { self._closeModals(); });
-  $('lb-pass').addEventListener('click', function (e) { if (e.target === this) self._closeModals(); });
 };
 
 // 4 kutulu şifre girişi (otomatik ilerler, silince geri gelir, yapıştırma destekli)
@@ -583,10 +585,11 @@ BottleLobby.prototype._newRoom = function (name, cap, locked, pin) {
 BottleLobby.prototype._openPass = function (r) {
   var self = this;
   this._passRoom = r;
-  this.$('lb-pass-name').textContent = r.name + ' · #' + r.id;
+  this.$('lb-pass-name').textContent = r.name;
   this.$('lb-pass-err').textContent = '';
   this.otpJoin.clear();
   this.$('lb-pass').classList.add('show');
+  if (this.game) this.game.pause();
   setTimeout(function () { self.otpJoin.focus(); }, 250);
 };
 
@@ -628,7 +631,7 @@ BottleLobby.prototype._enter = function (r, st) {
 };
 
 BottleLobby.prototype._closeModals = function () {
-  if (this.game && this.$ && this.$('lb-create').classList.contains('show') && !this._kbOpen) this.game.resume();
+  if (this.game && this.$ && this.ui.querySelector('.lb-page.show') && !this._kbOpen) this.game.resume();
   [].forEach.call(this.ui.querySelectorAll('.lb-modal.show,.lb-page.show'), function (m) { m.classList.remove('show'); });
 };
 
