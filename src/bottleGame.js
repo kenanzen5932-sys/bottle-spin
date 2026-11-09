@@ -943,12 +943,10 @@ BottleGame.prototype._buildOverlay = function () {
   var icSpk = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/>' + sl + '</svg>';
   var icSfx = svgBottle.replace('</svg>', sl + '</svg>');
   var icEmo = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14.5c1 1.5 2.4 2.2 4 2.2s3-.7 4-2.2"/><circle cx="9" cy="10" r="1.2" fill="#fff" stroke="none"/><circle cx="15" cy="10" r="1.2" fill="#fff" stroke="none"/></svg>';
-  var icInv = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-7 1.7-7 4v2h14v-2c0-2.3-3.7-4-7-4zm9-6V5h-2v3h-3v2h3v3h2v-3h3V8z"/></svg>';
   var icLock = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V8a3 3 0 0 0-6 0z"/></svg>';
   var EMO = ['😂', '😍', '🔥', '😱', '👏', '❤️', '🤔', '😡'];
   ui.innerHTML = '<div id="bg-top"><div id="bg-timer"><span>60</span></div><div class="bg-ctl">' +
     '<button class="bg-ic" id="bg-emo-btn" title="Tepki">' + icEmo + '</button>' +
-    '<button class="bg-ic" id="bg-inv" title="Davet et">' + icInv + '</button>' +
     '<button class="bg-ic" id="bg-lock" title="Masayı kilitle">' + icLock + '</button>' +
     '<button class="bg-ic off" id="bg-mic" title="Mikrofon">' + icMic + '</button>' +
     '<button class="bg-ic" id="bg-room" title="Oda sesi">' + icSpk + '</button>' +
@@ -1024,12 +1022,6 @@ BottleGame.prototype._buildOverlay = function () {
     self.emoEl.classList.remove('show');
     self.showReaction(self.meId, b.textContent);
     self.app.fire('bg:react', b.textContent);
-  });
-  // Davet: Flutter arkadaş/DM listesini açar
-  this.invBtn = ui.querySelector('#bg-inv');
-  this.invBtn.addEventListener('click', function () {
-    self.sfx.ensure(); self.sfx.pop();
-    if (self.roomInfo && self.roomInfo.id) self._post('invite', { roomId: self.roomInfo.id, roomName: self.roomInfo.name || '' });
   });
   // Kilit (sadece oda sahibi)
   this.lockBtn = ui.querySelector('#bg-lock');
@@ -1149,7 +1141,6 @@ BottleGame.prototype._updateButtons = function () {
   if (!this.spinBtn) return;
   var isOwner = !this.ownerId || !this.meId || this.ownerId === this.meId;
   if (this.lockBtn) this.lockBtn.style.display = this._remote && isOwner ? '' : 'none';
-  if (this.invBtn) this.invBtn.style.display = this._remote ? '' : 'none';
   this.spinBtn.style.display = isOwner ? '' : 'none';
   this.nextBtn.style.display = isOwner && this.state === 'question' ? '' : 'none';
   this.spinBtn.disabled = this.state !== 'idle';

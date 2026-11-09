@@ -69,7 +69,7 @@ var BottleNet = window.BottleNet = window.BottleNet || {
     var last = 0, timer = null, pend = null;
     var deliver = function (m) {
       if (!m || typeof m !== 'object') return;
-      if (m.type === 'react') { onMsg(m); return; }
+      if (m.type === 'react' || m.type === 'room') { onMsg(m); return; } // anlık ipucu (yenileme ayrıca sınırlı)
       var wait = 2000 - (Date.now() - last);
       if (wait <= 0) { last = Date.now(); onMsg(m); return; }
       pend = m;
@@ -147,9 +147,16 @@ BottleLobby.prototype.show = function () {
   var leaving = this._leaveRoomNet();
   if (BottleNet.ready()) {
     var self = this;
-    if (!this._lobbySub) this._lobbySub = BottleNet.sub('bottle-lobby', function () { self._refreshSoon(); });
+    if (!this._lobbySub) this._lobbySub = BottleNet.sub('bottle-lobby', function (m) {
+      // İpucu: listeyi hemen güncelle (asıl doğrulama sunucudan, masaya otururken de sunucu kontrol eder)
+      if (m && m.type === 'room' && m.id) {
+        var r = self._find(m.id);
+        if (r && typeof m.closed === 'boolean' && r.closed !== m.closed) { r.closed = m.closed; self._renderList(); }
+      }
+      self._refreshSoon();
+    });
     clearInterval(this._poll);
-    this._poll = setInterval(function () { if (self.ui.style.display !== 'none' && !self._kbOpen) self._loadRooms(); }, 8000);
+    this._poll = setInterval(function () { if (self.ui.style.display !== 'none' && !self._kbOpen) self._loadRooms(); }, 5000);
     this._renderList();                       // bekletmeden (çıktığım oda listeden düşmüş haliyle)
     (leaving || Promise.resolve()).then(function () { self._loadRooms(); });
   } else this._renderList();
@@ -158,6 +165,7 @@ BottleLobby.prototype.show = function () {
 // ── Sunucu: oda listesi / oda durumu ──
 BottleLobby.prototype._loadRooms = function () {
   var self = this;
+  this._lastLoad = Date.now();
   return BottleNet.rpc('bottle_list_rooms', { p_limit: 100 }).then(function (list) {
     self._waiting = false;
     self.rooms = (list || []).map(function (r) { return self._mapRoom(r); });
@@ -171,7 +179,8 @@ BottleLobby.prototype._loadRooms = function () {
 };
 BottleLobby.prototype._refreshSoon = function () {
   var self = this; clearTimeout(this._rt);
-  this._rt = setTimeout(function () { if (self.ui.style.display !== 'none') self._loadRooms(); }, 400);
+  var wait = Math.max(250, 1500 - (Date.now() - (this._lastLoad || 0))); // sunucuya en fazla 1,5 sn'de bir
+  this._rt = setTimeout(function () { if (self.ui.style.display !== 'none') self._loadRooms(); }, wait);
 };
 BottleLobby.prototype._mapRoom = function (r) {
   var players = (r.players || []).map(function (p) { return { id: p.id, name: p.name || 'Oyuncu', avatar: p.avatar || '', gender: p.gender, seat: p.seat }; });
@@ -248,7 +257,7 @@ BottleLobby.prototype._netLock = function (closed) {
   BottleNet.rpc('bottle_set_closed', { p_room: this.roomId, p_closed: !!closed }).then(function (st) {
     self._applyRoom(st);
     if (self._roomSub) self._roomSub.send('lock');
-    if (self._lobbySub) self._lobbySub.send('rooms');
+    if (self._lobbySub) self._lobbySub.send('room', { id: st.id, closed: !!st.closed });
     self.toast(closed ? 'Masa kilitlendi, yeni kimse giremez' : 'Masa herkese açıldı');
   }).catch(function (e) { self.toast(lbErrText(e)); });
 };
