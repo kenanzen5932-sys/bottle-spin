@@ -103,6 +103,11 @@ BottleLobby.prototype.initialize = function () {
   window.BottleLobby = this._api();
   var self = this;
   BottleNet.onReady = function () { if (self.ui.style.display !== 'none') self.show(); };
+  this._onVis = function () {
+    if (document.hidden || !BottleNet.ready()) return;
+    if (self.roomId) self._syncRoom(); else if (self.ui.style.display !== 'none') self._loadRooms();
+  };
+  document.addEventListener('visibilitychange', this._onVis);
   this.app.on('bg:spinReq', this._netSpin, this);
   this.app.on('bg:nextReq', this._netNext, this);
   this.app.on('bg:lobby', this.show, this);
@@ -110,6 +115,7 @@ BottleLobby.prototype.initialize = function () {
   this.on('destroy', function () {
     this.app.off('bg:lobby', this.show, this);
     this.app.off('bg:lobbyBack', this._back, this);
+    document.removeEventListener('visibilitychange', this._onVis);
     if (this.ui) this.ui.remove();
     if (this._css) this._css.remove();
   }, this);
@@ -184,7 +190,7 @@ BottleLobby.prototype._syncRoom = function () {
 BottleLobby.prototype._applyRoom = function (st) {
   var g = this.game, me = BottleNet.cfg.userId;
   if (!g || g.mode !== 'table') return;
-  if (!st.players.some(function (p) { return p.id === me; })) { this.roomId = null; this.app.fire('bg:lobby'); return; }
+  if (!st.players.some(function (p) { return p.id === me; })) { this.roomId = null; this.toast('Bağlantın koptuğu için masadan çıkarıldın'); this.app.fire('bg:lobby'); return; }
   if (g.capacity !== st.capacity) g.setCapacity(st.capacity);
   g.setPlayers(st.players.map(function (p) { return { id: p.id, name: p.name || 'Oyuncu', avatar: p.avatar || '', gender: p.gender, seat: p.seat }; }), st.owner_id, me);
   g._serverCountdown = st.countdown_end ? st.countdown_end - BottleNet.offset : 0;
