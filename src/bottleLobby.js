@@ -246,7 +246,7 @@ BottleLobby.prototype._build = function () {
     '.lb-act.quick{background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 6px 16px rgba(255,79,134,.35)}',
     '.lb-act.create{background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.3)!important}',
     '.lb-act .pi{width:22px;height:22px;border-radius:7px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}.lb-act .pi svg{width:14px;height:14px}',
-    '.lb-head{display:flex;align-items:center;gap:8px;padding:18px var(--pad) 0;flex:none}',
+    '.lb-head{display:flex;align-items:center;gap:8px;padding:18px var(--pad) 2px;flex:none}','.lb-new{display:flex;align-items:center;gap:6px;height:36px;padding:0 14px 0 8px!important;border-radius:12px;font-size:13.5px;font-weight:800;white-space:nowrap;background:linear-gradient(135deg,#ff8a5b,#ff4f86)!important;box-shadow:0 5px 14px rgba(255,79,134,.35);transition:transform .1s}','.lb-new:active{transform:scale(.95)}.lb-new .pi{width:22px;height:22px;border-radius:7px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center}.lb-new .pi svg{width:14px;height:14px}',
     '.lb-head h2{margin:0;font-size:17px;font-weight:900}',
     '.lb-badge{height:22px;min-width:22px;padding:0 7px;border-radius:11px;background:rgba(255,255,255,.18);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}',
     '.lb-ref{margin-left:auto;width:34px;height:34px;border-radius:11px;background:rgba(255,255,255,.14)!important;border:1px solid rgba(255,255,255,.22)!important;display:flex;align-items:center;justify-content:center}.lb-ref svg{width:17px;height:17px}.lb-ref.spin svg{animation:lbSpin .6s linear}',
@@ -342,11 +342,9 @@ BottleLobby.prototype._build = function () {
     '<div class="lb-title"><b>Şişe Çevirmece</b><small>KİM KİME SORACAK?</small></div><span></span></div>' +
     '<div class="lb-hero"></div>' +
     '<div class="lb-sheet">' +
-    '<div class="lb-actions"><button class="lb-act quick" id="lb-quick">' + LB_IC.bolt + 'Hızlı Oyna</button>' +
-    '<button class="lb-act create" id="lb-create-btn"><span class="pi">' + LB_IC.plus + '</span>Oda Kur</button></div>' +
     '<div class="lb-head"><h2>Odalar</h2><span class="lb-badge" id="lb-count">0</span>' +
-    '<button class="lb-ref" id="lb-ref" aria-label="Yenile">' + LB_IC.refresh + '</button></div>' +
-    '<div class="lb-search">' + LB_IC.search + '<input id="lb-q" placeholder="Oda adı veya ID ara" maxlength="24" enterkeyhint="search"></div>' +
+    '<button class="lb-ref" id="lb-ref" aria-label="Yenile">' + LB_IC.refresh + '</button>' +
+    '<button class="lb-new" id="lb-create-btn"><span class="pi">' + LB_IC.plus + '</span>Oda Kur</button></div>' +
     '<div class="lb-chips" id="lb-chips"><button class="on" data-f="all">Tümü</button><button data-f="2">2 Kişi</button>' +
     '<button data-f="4">4 Kişi</button><button data-f="6">6 Kişi</button><button data-f="free">Boş Yer Var</button><button data-f="lock">Şifreli</button></div>' +
     '<div class="lb-list" id="lb-list"></div></div>' +
@@ -375,15 +373,10 @@ BottleLobby.prototype._build = function () {
   this.listEl = $('lb-list');
   this.listEl.addEventListener('error', function (e) { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
   $('lb-back').addEventListener('click', function () { self._back(); });
-  $('lb-quick').addEventListener('click', function () { self._sfx(); self._quick(); });
   $('lb-create-btn').addEventListener('click', function () { self._sfx(); self._openCreate(); });
   $('lb-ref').addEventListener('click', function () {
     var b = this; b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin');
     self._post('rooms_refresh', {}); self._renderList();
-  });
-  $('lb-q').addEventListener('input', function () {
-    var v = this.value; clearTimeout(self._qt);
-    self._qt = setTimeout(function () { self.query = v.trim().toLowerCase(); self._renderList(); }, 180);
   });
   $('lb-chips').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
