@@ -226,6 +226,8 @@ BottleGame.prototype._buildCamera = function () {
   this._onDown = function (e) {
     if (self.mode === 'lobby') return;
     if (self.onWrap) self.onWrap.classList.remove('open');
+    if (self.emoEl) self.emoEl.classList.remove('show');
+    if (self.chatEl && document.activeElement !== self.ui.querySelector('#bg-cin')) self.chatEl.classList.remove('show');
     drag = { x: e.clientX, y: e.clientY, yaw: self.look.tyaw, pitch: self.look.tpitch };
     try { cv.setPointerCapture(e.pointerId); } catch (x) { /* */ }
   };
@@ -896,6 +898,22 @@ BottleGame.prototype._buildOverlay = function () {
     '@keyframes bgFly{0%{opacity:0;transform:translate(-50%,0) scale(.4)}12%{opacity:1;transform:translate(-50%,-14px) scale(1.25)}25%{transform:translate(-50%,-26px) scale(1)}100%{opacity:0;transform:translate(calc(-50% + var(--dx,0px)),-130px) scale(1.1)}}',
     '.bg-mod{position:absolute;inset:0;z-index:10;display:none;align-items:center;justify-content:center;background:rgba(8,4,14,.6);pointer-events:auto}.bg-mod.show{display:flex}',
     '#bg-lock.on{background:#ffb547}',
+    '#bg-chat{position:absolute;z-index:4;right:max(60px,env(safe-area-inset-right));top:62px;display:none;flex-direction:column;gap:8px;width:min(400px,62vw);padding:10px;border-radius:16px;background:rgba(20,12,30,.92);border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 20px rgba(0,0,0,.4);pointer-events:auto}',
+    '#bg-chat.show{display:flex;animation:bgPop .15s ease-out}',
+    '.bg-qs{display:flex;flex-wrap:wrap;gap:6px}',
+    '.bg-qs button{border:0;border-radius:12px;padding:6px 10px;background:rgba(255,255,255,.1);color:#fff;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+    '.bg-qs button:active{transform:scale(.94)}',
+    '.bg-cin{display:flex;gap:6px}',
+    '.bg-cin input{flex:1;min-width:0;height:36px;box-sizing:border-box;border-radius:11px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#fff;padding:0 10px;font:600 13px system-ui,sans-serif;outline:0;user-select:text;-webkit-user-select:text}',
+    '.bg-cin input::placeholder{color:rgba(255,255,255,.5)}',
+    '.bg-cin button{height:36px;padding:0 14px;border:0;border-radius:11px;background:linear-gradient(135deg,#ff8a5b,#ff4f86);color:#fff;font-weight:800;cursor:pointer}',
+    '.bg-bub{position:absolute;bottom:100%;left:50%;margin-bottom:6px;max-width:150px;width:max-content;padding:5px 9px;border-radius:12px;background:#fff;color:#22183a;font-size:11.5px;font-weight:700;line-height:1.25;text-align:center;word-break:break-word;box-shadow:0 4px 10px rgba(0,0,0,.35);animation:bgBub 4.2s ease forwards;pointer-events:none}',
+    '.bg-bub:after{content:"";position:absolute;left:50%;top:100%;margin-left:-5px;border:5px solid transparent;border-top-color:#fff}',
+    '@keyframes bgBub{0%{opacity:0;transform:translate(-50%,6px) scale(.8)}8%{opacity:1;transform:translate(-50%,0) scale(1)}85%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,0)}}',
+    '#bg-log{position:absolute;left:max(10px,env(safe-area-inset-left));bottom:10px;z-index:2;display:flex;flex-direction:column;gap:4px;max-width:min(300px,40vw);pointer-events:none}',
+    '#bg-log div{background:rgba(10,6,18,.55);border-radius:10px;padding:4px 9px;font-size:11.5px;font-weight:600;color:#fff;animation:bgLog 9s forwards;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '#bg-log b{color:#ffd34d;margin-right:4px}',
+    '@keyframes bgLog{0%{opacity:0;transform:translateY(6px)}5%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0}}',
     '.bg-av{width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.4)}',
     '.bg-av img{width:100%;height:100%;object-fit:cover}',
     '.bg-name{background:rgba(0,0,0,.55);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}',
@@ -945,7 +963,10 @@ BottleGame.prototype._buildOverlay = function () {
   var icEmo = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14.5c1 1.5 2.4 2.2 4 2.2s3-.7 4-2.2"/><circle cx="9" cy="10" r="1.2" fill="#fff" stroke="none"/><circle cx="15" cy="10" r="1.2" fill="#fff" stroke="none"/></svg>';
   var icLock = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V8a3 3 0 0 0-6 0z"/></svg>';
   var EMO = ['😂', '😍', '🔥', '😱', '👏', '❤️', '🤔', '😡'];
+  var icChat = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm3 6.5a1.3 1.3 0 1 0 0 .01zm5 0a1.3 1.3 0 1 0 0 .01zm5 0a1.3 1.3 0 1 0 0 .01z"/></svg>';
+  var QUICK = ['Hahaha 😂', 'Sıra bende!', 'Çabuk cevapla ⏰', 'Soru zor 😅', 'Bravo 👏', 'Ayıp ama 🙈', 'Bir daha çevir!', 'Doğru söyle 😏'];
   ui.innerHTML = '<div id="bg-top"><div id="bg-timer"><span>60</span></div><div class="bg-ctl">' +
+    '<button class="bg-ic" id="bg-chat-btn" title="Mesaj">' + icChat + '</button>' +
     '<button class="bg-ic" id="bg-emo-btn" title="Tepki">' + icEmo + '</button>' +
     '<button class="bg-ic" id="bg-lock" title="Masayı kilitle">' + icLock + '</button>' +
     '<button class="bg-ic off" id="bg-mic" title="Mikrofon">' + icMic + '</button>' +
@@ -953,6 +974,9 @@ BottleGame.prototype._buildOverlay = function () {
     '<button class="bg-ic" id="bg-sfx" title="Şişe sesi">' + icSfx + '</button></div>' +
     '<button id="bg-exit" title="Çıkış"><svg viewBox="0 0 24 24" fill="#fff"><path d="M10 3h9a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-9v-2h9V5h-9zM9.5 7.5 11 9l-2 2h8v2H9l2 2-1.5 1.5L5 12z"/></svg></button></div>' +
     '<div id="bg-emo">' + EMO.map(function (e) { return '<button>' + e + '</button>'; }).join('') + '</div>' +
+    '<div id="bg-chat"><div class="bg-qs">' + QUICK.map(function (q) { return '<button>' + q + '</button>'; }).join('') + '</div>' +
+    '<div class="bg-cin"><input id="bg-cin" maxlength="40" placeholder="Mesaj yaz… (40 harf)" enterkeyhint="send" autocomplete="off"><button id="bg-csend">Gönder</button></div></div>' +
+    '<div id="bg-log"></div>' +
     '<div id="bg-kick" class="bg-mod"><div class="bg-dlg"><h3 id="bg-kick-t"></h3><p>10 dakika bu masaya geri giremez.</p>' +
     '<div class="row"><button class="bg-btn gray" id="bg-kick-no">Vazgeç</button><button class="bg-btn red" id="bg-kick-yes">Masadan At</button></div></div></div>' +
     '<div id="bg-modal"><div class="bg-dlg"><h3>Oyundan çıkılsın mı?</h3><p>Lobiye geri döneceksin.</p>' +
@@ -1015,7 +1039,7 @@ BottleGame.prototype._buildOverlay = function () {
 
   // 😊 Tepki: kendi başımdan uçar + masadakilere gider
   this.emoEl = ui.querySelector('#bg-emo');
-  ui.querySelector('#bg-emo-btn').addEventListener('click', function () { self.sfx.ensure(); self.sfx.pop(); self.emoEl.classList.toggle('show'); });
+  ui.querySelector('#bg-emo-btn').addEventListener('click', function () { self.sfx.ensure(); self.sfx.pop(); if (self.chatEl) self.chatEl.classList.remove('show'); self.emoEl.classList.toggle('show'); });
   this.emoEl.addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     var now = Date.now(); if (now - (self._lastReact || 0) < 700) return; self._lastReact = now;
@@ -1023,6 +1047,26 @@ BottleGame.prototype._buildOverlay = function () {
     self.showReaction(self.meId, b.textContent);
     self.app.fire('bg:react', b.textContent);
   });
+  // 💬 Mesaj: hazır mesajlar + kısa yazı (sunucudan geçer)
+  this.chatEl = ui.querySelector('#bg-chat');
+  var cin = ui.querySelector('#bg-cin');
+  var send = function (txt) {
+    txt = String(txt || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!txt) return;
+    var now = Date.now(); if (now - (self._lastSay || 0) < 1000) return; self._lastSay = now;
+    self.chatEl.classList.remove('show');
+    cin.value = ''; try { cin.blur(); } catch (e) { /* */ }
+    if (self._remote) self.app.fire('bg:say', txt); else self.showChat(self.meId, txt);
+  };
+  ui.querySelector('#bg-chat-btn').addEventListener('click', function () {
+    self.sfx.ensure(); self.sfx.pop();
+    self.emoEl.classList.remove('show');
+    self.chatEl.classList.toggle('show');
+  });
+  ui.querySelector('.bg-qs').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) send(b.textContent); });
+  ui.querySelector('#bg-csend').addEventListener('click', function () { send(cin.value); });
+  cin.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); send(cin.value); } });
+
   // Kilit (sadece oda sahibi)
   this.lockBtn = ui.querySelector('#bg-lock');
   this.lockBtn.addEventListener('click', function () { self.sfx.ensure(); self.sfx.pop(); self.app.fire('bg:lock', !self.closed); });
@@ -1132,6 +1176,31 @@ BottleGame.prototype.showReaction = function (uid, emo) {
   setTimeout(function () { el.remove(); }, 1900);
 };
 
+// 💬 Mesaj: oyuncunun avatarının üstünde balon (4 sn) + sol altta kısa kayıt
+BottleGame.prototype.showChat = function (uid, text) {
+  if (this.mode !== 'table' || !text) return;
+  var seat = null;
+  this.seats.forEach(function (s) { if (s.player && s.player.id === String(uid)) seat = s; });
+  if (!seat || !seat.tag) return;
+  var old = seat.tag.querySelector('.bg-bub');
+  if (old) old.remove();
+  var b = document.createElement('div');
+  b.className = 'bg-bub';
+  b.textContent = String(text).slice(0, 40);
+  seat.tag.appendChild(b);
+  clearTimeout(seat._bubT);
+  seat._bubT = setTimeout(function () { b.remove(); }, 4300);
+  var log = this.ui.querySelector('#bg-log');
+  var row = document.createElement('div');
+  var nm = document.createElement('b');
+  nm.textContent = seat.player.name + ':';
+  row.appendChild(nm);
+  row.appendChild(document.createTextNode(String(text).slice(0, 40)));
+  log.appendChild(row);
+  while (log.children.length > 3) log.firstChild.remove();
+  setTimeout(function () { row.remove(); }, 9000);
+};
+
 BottleGame.prototype.setClosed = function (c) {
   this.closed = !!c;
   if (this.lockBtn) { this.lockBtn.classList.toggle('on', this.closed); this.lockBtn.title = this.closed ? 'Masa kilitli (aç)' : 'Masayı kilitle'; }
@@ -1212,7 +1281,8 @@ BottleGame.prototype._api = function () {
     enterRoom: function (room) { self.enterRoom(room); },
     setMicStates: function (map) { self.setMicStates(map); }, // {userId: true/false}    // odadaki herkes [{id,name,avatar,gender}]        // Flutter: Android/iOS geri tuşu (PopScope) → onay sor              // Flutter: mikrofon gerçekten açıldı/kapandı
     setRoomAudio: function (on) { self.setRoomAudio(on); },  // Flutter: oda sesi açık/kapalı
-    setSpeaking: function (ids) { self.setSpeaking(ids); },   // Flutter (LiveKit): konuşan kullanıcı id'leri
+    setSpeaking: function (ids) { self.setSpeaking(ids); },
+    showChat: function (uid, t) { self.showChat(uid, t); },   // Flutter (LiveKit): konuşan kullanıcı id'leri
     pause: function () { self.pause(); },
     resume: function () { self.resume(); },
     destroy: function () { self.app.destroy(); },
