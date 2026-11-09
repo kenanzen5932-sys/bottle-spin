@@ -66,6 +66,15 @@ var BottleNet = window.BottleNet = window.BottleNet || {
   // Kanal: sadece "değişti" haberi taşır; asıl veri hep RPC'den okunur (sahte mesaj zarar veremez)
   sub: function (ch, onMsg) {
     var self = this, c = this.cfg, s = { closed: false, ws: null, tries: 0, queue: [] };
+    var last = 0, timer = null, pend = null;
+    var deliver = function (m) {
+      if (!m || typeof m !== 'object') return;
+      if (m.type === 'react') { onMsg(m); return; }
+      var wait = 2000 - (Date.now() - last);
+      if (wait <= 0) { last = Date.now(); onMsg(m); return; }
+      pend = m;
+      if (!timer) timer = setTimeout(function () { timer = null; last = Date.now(); var x = pend; pend = null; onMsg(x); }, wait);
+    };
     var open = function () {
       if (s.closed || !c || !c.wsBase) return;
       var ws = s.ws = new WebSocket(c.wsBase + encodeURIComponent(ch) + '?api_key=' + encodeURIComponent(c.wsKey || '') + '&notify_self=0');
@@ -75,7 +84,7 @@ var BottleNet = window.BottleNet = window.BottleNet || {
         if (!m) return;
         var ev = m.event, data = m.data;
         if (!ev && m.type === 'CLIENT_EVENT') { var inner = typeof m.data === 'string' ? JSON.parse(m.data) : m.data; ev = inner && inner.event; data = inner && inner.data; }
-        if (ev === 'client-bg' || ev === 'bg') onMsg(typeof data === 'string' ? JSON.parse(data) : (data || {}));
+        try { if (ev === 'client-bg' || ev === 'bg') deliver(typeof data === 'string' ? JSON.parse(data) : (data || {})); } catch (x) { /* */ }
       };
       ws.onclose = function () { if (!s.closed) setTimeout(open, Math.min(15000, 1000 * Math.pow(2, s.tries++))); };
     };
@@ -90,7 +99,8 @@ var BottleNet = window.BottleNet = window.BottleNet || {
   },
 };
 var LB_ERR = { wrong_pin: 'Şifre yanlış, tekrar dene', too_many_attempts: 'Çok fazla deneme, 10 dk sonra dene', room_full: 'Bu masa dolu',
-  room_not_found: 'Masa kapanmış', not_owner: 'Sadece oda sahibi yapabilir', need_two_players: 'En az 2 oyuncu gerekli', round_active: 'Tur bitmedi' };
+  room_not_found: 'Masa kapanmış', not_owner: 'Sadece oda sahibi yapabilir', need_two_players: 'En az 2 oyuncu gerekli', round_active: 'Tur bitmedi',
+  banned: 'Hesabın kısıtlı olduğu için oynayamazsın', kicked: 'Bu masadan çıkarıldın, 10 dk giremezsin', room_closed: 'Masa kilitli', not_in_room: 'Oyuncu masada değil' };
 function lbErrText(e) { var c = (e && (e.code || e.message)) || ''; return LB_ERR[c] || 'Bağlantı hatası, tekrar dene'; }
 
 BottleLobby.prototype.initialize = function () {
@@ -110,6 +120,9 @@ BottleLobby.prototype.initialize = function () {
   document.addEventListener('visibilitychange', this._onVis);
   this.app.on('bg:spinReq', this._netSpin, this);
   this.app.on('bg:nextReq', this._netNext, this);
+  this.app.on('bg:react', function (e) { if (this._roomSub) this._roomSub.send('react', { e: e, u: BottleNet.cfg && BottleNet.cfg.userId }); }, this);
+  this.app.on('bg:kick', this._netKick, this);
+  this.app.on('bg:lock', this._netLock, this);
   this.app.on('bg:lobby', this.show, this);
   this.app.on('bg:lobbyBack', this._back, this);
   this.on('destroy', function () {
@@ -149,6 +162,11 @@ BottleLobby.prototype._loadRooms = function () {
     self._waiting = false;
     self.rooms = (list || []).map(function (r) { return self._mapRoom(r); });
     self._renderList();
+    var pj = self._pendingJoin;
+    if (pj && !self.roomId) {
+      self._pendingJoin = null;
+      if (self._find(pj)) self._join(pj); else self.toast('Masa kapanmış');
+    }
   }).catch(function () { self.toast('Odalar yüklenemedi'); });
 };
 BottleLobby.prototype._refreshSoon = function () {
@@ -159,7 +177,7 @@ BottleLobby.prototype._mapRoom = function (r) {
   var players = (r.players || []).map(function (p) { return { id: p.id, name: p.name || 'Oyuncu', avatar: p.avatar || '', gender: p.gender, seat: p.seat }; });
   var owner = null;
   players.forEach(function (p) { if (p.id === r.owner_id) owner = p; });
-  return { id: r.id, code: r.code, name: r.name, capacity: r.capacity, locked: !!r.locked, status: r.status === 'play' ? 'play' : 'wait',
+  return { id: r.id, code: r.code, name: r.name, capacity: r.capacity, locked: !!r.locked, closed: !!r.closed, status: r.status === 'play' ? 'play' : 'wait',
     owner: owner || players[0], players: players, _raw: r };
 };
 // Masaya otur (sunucu cevabı = oda durumu)
@@ -167,7 +185,10 @@ BottleLobby.prototype._enterNet = function (st) {
   var self = this;
   this.roomId = st.id; this._lastRound = null;
   if (this._roomSub) this._roomSub.close();
-  this._roomSub = BottleNet.sub('bottle-room-' + st.id, function () { self._syncRoom(); });
+  this._roomSub = BottleNet.sub('bottle-room-' + st.id, function (m) {
+    if (m && m.type === 'react') { if (self.game) self.game.showReaction(m.u, m.e); return; }
+    self._syncRoom();
+  });
   this._roomSub.send('joined');
   clearInterval(this._hb);
   this._hbN = 0;
@@ -190,10 +211,11 @@ BottleLobby.prototype._syncRoom = function () {
 BottleLobby.prototype._applyRoom = function (st) {
   var g = this.game, me = BottleNet.cfg.userId;
   if (!g || g.mode !== 'table') return;
-  if (!st.players.some(function (p) { return p.id === me; })) { this.roomId = null; this.toast('Bağlantın koptuğu için masadan çıkarıldın'); this.app.fire('bg:lobby'); return; }
+  if (!st.players.some(function (p) { return p.id === me; })) { this.roomId = null; this.toast('Masadan çıkarıldın'); this.app.fire('bg:lobby'); return; }
   if (g.capacity !== st.capacity) g.setCapacity(st.capacity);
   g.setPlayers(st.players.map(function (p) { return { id: p.id, name: p.name || 'Oyuncu', avatar: p.avatar || '', gender: p.gender, seat: p.seat }; }), st.owner_id, me);
   g._serverCountdown = st.countdown_end ? st.countdown_end - BottleNet.offset : 0;
+  g.setClosed(!!st.closed);
   if (st.spin && st.round !== this._lastRound) {
     this._lastRound = st.round;
     var sp = st.spin;
@@ -211,6 +233,30 @@ BottleLobby.prototype._netNext = function () {
   var self = this; if (!this.roomId) return;
   BottleNet.rpc('bottle_next_round', { p_room: this.roomId }).then(function (st) { self._applyRoom(st); if (self._roomSub) self._roomSub.send('next'); })
     .catch(function (e) { self.game && self.game._banner('<span class="bg-hint">' + lbEsc(lbErrText(e)) + '</span>'); });
+};
+BottleLobby.prototype._netKick = function (uid) {
+  var self = this; if (!this.roomId) return;
+  BottleNet.rpc('bottle_kick', { p_room: this.roomId, p_user: uid }).then(function (st) {
+    self._applyRoom(st);
+    if (self._roomSub) self._roomSub.send('kick');
+    self._post('voice_sweep', {}); // atılanı sesten de çıkar
+    self.toast('Oyuncu masadan atıldı');
+  }).catch(function (e) { self.toast(lbErrText(e)); });
+};
+BottleLobby.prototype._netLock = function (closed) {
+  var self = this; if (!this.roomId) return;
+  BottleNet.rpc('bottle_set_closed', { p_room: this.roomId, p_closed: !!closed }).then(function (st) {
+    self._applyRoom(st);
+    if (self._roomSub) self._roomSub.send('lock');
+    if (self._lobbySub) self._lobbySub.send('rooms');
+    self.toast(closed ? 'Masa kilitlendi, yeni kimse giremez' : 'Masa herkese açıldı');
+  }).catch(function (e) { self.toast(lbErrText(e)); });
+};
+// Davetten gelen: o masaya otur (şifreliyse şifre sayfası)
+BottleLobby.prototype.joinRoom = function (id) {
+  if (!id) return;
+  this._pendingJoin = String(id);
+  if (BottleNet.ready() && !this._waiting) this._loadRooms();
 };
 BottleLobby.prototype._leaveRoomNet = function () {
   if (!this.roomId) return null;
@@ -490,14 +536,14 @@ BottleLobby.prototype._more = function (anim) {
   if (old) old.remove();
   this.listEl.insertAdjacentHTML('beforeend', list.slice(from, to).map(function (r, n) {
     var o = r.owner || r.players[0] || { id: r.id, name: '?' };
-    var full = r.players.length >= r.capacity;
+    var full = r.players.length >= r.capacity, shut = r.closed && !full;
     return '<div class="lb-room' + (anim ? '' : ' na') + '" style="animation-delay:' + Math.min(n, 8) * 0.035 + 's">' +
       '<div class="lb-r-av" style="background:' + lbColor(o.id) + '">' +
       (o.avatar ? '<img src="' + lbEsc(o.avatar) + '" alt="">' : lbEsc(o.name.charAt(0).toUpperCase())) + '</div>' +
       '<div class="lb-r-mid"><div class="lb-r-name"><span>' + lbEsc(r.name) + '</span>' + (r.locked ? lbLock('#ffd34d') : '') + '</div>' +
       '<div class="lb-r-meta"><span class="lb-cnt">' + r.players.length + '/' + r.capacity + '</span>' +
       '<span class="lb-st ' + (r.status === 'play' ? 'play">Oyunda' : 'wait">Bekliyor') + '</span></div></div>' +
-      '<button class="lb-join" data-id="' + lbEsc(r.id) + '"' + (full ? ' disabled>Dolu' : '>Katıl') + '</button></div>';
+      '<button class="lb-join" data-id="' + lbEsc(r.id) + '"' + (full ? ' disabled>Dolu' : shut ? ' disabled>Kapalı' : '>Katıl') + '</button></div>';
   }).join('') + (to < list.length ? '<div class="lb-more"><i></i>Yükleniyor…</div>' : ''));
 };
 
@@ -511,6 +557,7 @@ BottleLobby.prototype._join = function (id) {
   var r = this._find(id);
   if (!r) return;
   if (r.players.length >= r.capacity) { this.toast('Bu masa dolu'); return; }
+  if (r.closed) { this.toast('Masa kilitli'); return; }
   if (r.locked) { this._openPass(r); return; }
   if (BottleNet.ready()) { this._joinNet(r.id, null); return; }
   this._enter(r);
@@ -708,6 +755,7 @@ BottleLobby.prototype._api = function () {
     setRooms: function (list) { self.rooms = (list || []).map(function (r) { r.players = r.players || []; return r; }); self._renderList(); },
     toast: function (m) { self.toast(m); },
     setKeyboard: function (h) { self.setKeyboard(h); },
+    joinRoom: function (id) { self.joinRoom(id); },            // Flutter: DM davetinden gelen masa
     setInsets: function (top) { document.documentElement.style.setProperty('--sat', (top | 0) + 'px'); self.ui.style.setProperty('--sat', (top | 0) + 'px'); },
     show: function () { self.show(); },
   };

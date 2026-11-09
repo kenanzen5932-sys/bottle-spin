@@ -278,6 +278,8 @@ BottleGame.prototype.setMode = function (mode) {
 // Lobiden masaya: room = {id, name, capacity, players?, ownerId?, meId?} (demo: demoCount)
 BottleGame.prototype.enterRoom = function (room) {
   room = room || {};
+  this.roomInfo = { id: room.id, name: room.name };
+  this.closed = false;
   this.setMode('table');
   if (this.titleEl) this.titleEl.textContent = room.name || 'ŞİŞE ÇEVİRMECE';
   if (room.players) {
@@ -883,7 +885,17 @@ BottleGame.prototype._buildOverlay = function () {
   css.textContent = [
     '#bg-ui{position:fixed;inset:0;pointer-events:none;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;z-index:5;overflow:hidden}',
     '#bg-ui:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 60% 55%,transparent 50%,rgba(0,0,0,.5) 100%)}',
-    '.bg-tag{position:absolute;left:0;top:0;z-index:1;display:flex;flex-direction:column;align-items:center;gap:5px;will-change:transform}',
+    '.bg-tag{position:absolute;left:0;top:0;z-index:1;display:flex;flex-direction:column;align-items:center;gap:5px;will-change:transform;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+    '.bg-tag.talk .bg-av{border-color:#3ddc84!important;animation:bgTalk 1s ease-out infinite}',
+    '@keyframes bgTalk{0%{box-shadow:0 0 0 0 rgba(61,220,132,.8),0 0 0 0 rgba(61,220,132,.5)}100%{box-shadow:0 0 0 9px rgba(61,220,132,0),0 0 0 17px rgba(61,220,132,0)}}',
+    '#bg-emo{position:absolute;z-index:4;right:max(60px,env(safe-area-inset-right));top:62px;display:none;gap:4px;padding:6px;border-radius:18px;background:rgba(20,12,30,.85);border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 20px rgba(0,0,0,.4);pointer-events:auto}',
+    '#bg-emo.show{display:flex;animation:bgPop .15s ease-out}',
+    '#bg-emo button{width:38px;height:38px;border:0;border-radius:12px;background:rgba(255,255,255,.08);font-size:22px;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}',
+    '#bg-emo button:active{transform:scale(.85)}',
+    '.bg-fly{position:absolute;z-index:6;left:0;top:0;font-size:34px;pointer-events:none;animation:bgFly 1.8s cubic-bezier(.2,.7,.3,1) forwards;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}',
+    '@keyframes bgFly{0%{opacity:0;transform:translate(-50%,0) scale(.4)}12%{opacity:1;transform:translate(-50%,-14px) scale(1.25)}25%{transform:translate(-50%,-26px) scale(1)}100%{opacity:0;transform:translate(calc(-50% + var(--dx,0px)),-130px) scale(1.1)}}',
+    '.bg-mod{position:absolute;inset:0;z-index:10;display:none;align-items:center;justify-content:center;background:rgba(8,4,14,.6);pointer-events:auto}.bg-mod.show{display:flex}',
+    '#bg-lock.on{background:#ffb547}',
     '.bg-av{width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.4)}',
     '.bg-av img{width:100%;height:100%;object-fit:cover}',
     '.bg-name{background:rgba(0,0,0,.55);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}',
@@ -930,11 +942,21 @@ BottleGame.prototype._buildOverlay = function () {
   var icMic = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z"/>' + sl + '</svg>';
   var icSpk = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/>' + sl + '</svg>';
   var icSfx = svgBottle.replace('</svg>', sl + '</svg>');
+  var icEmo = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14.5c1 1.5 2.4 2.2 4 2.2s3-.7 4-2.2"/><circle cx="9" cy="10" r="1.2" fill="#fff" stroke="none"/><circle cx="15" cy="10" r="1.2" fill="#fff" stroke="none"/></svg>';
+  var icInv = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-7 1.7-7 4v2h14v-2c0-2.3-3.7-4-7-4zm9-6V5h-2v3h-3v2h3v3h2v-3h3V8z"/></svg>';
+  var icLock = '<svg viewBox="0 0 24 24" fill="#fff"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V8a3 3 0 0 0-6 0z"/></svg>';
+  var EMO = ['😂', '😍', '🔥', '😱', '👏', '❤️', '🤔', '😡'];
   ui.innerHTML = '<div id="bg-top"><div id="bg-timer"><span>60</span></div><div class="bg-ctl">' +
+    '<button class="bg-ic" id="bg-emo-btn" title="Tepki">' + icEmo + '</button>' +
+    '<button class="bg-ic" id="bg-inv" title="Davet et">' + icInv + '</button>' +
+    '<button class="bg-ic" id="bg-lock" title="Masayı kilitle">' + icLock + '</button>' +
     '<button class="bg-ic off" id="bg-mic" title="Mikrofon">' + icMic + '</button>' +
     '<button class="bg-ic" id="bg-room" title="Oda sesi">' + icSpk + '</button>' +
     '<button class="bg-ic" id="bg-sfx" title="Şişe sesi">' + icSfx + '</button></div>' +
     '<button id="bg-exit" title="Çıkış"><svg viewBox="0 0 24 24" fill="#fff"><path d="M10 3h9a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-9v-2h9V5h-9zM9.5 7.5 11 9l-2 2h8v2H9l2 2-1.5 1.5L5 12z"/></svg></button></div>' +
+    '<div id="bg-emo">' + EMO.map(function (e) { return '<button>' + e + '</button>'; }).join('') + '</div>' +
+    '<div id="bg-kick" class="bg-mod"><div class="bg-dlg"><h3 id="bg-kick-t"></h3><p>10 dakika bu masaya geri giremez.</p>' +
+    '<div class="row"><button class="bg-btn gray" id="bg-kick-no">Vazgeç</button><button class="bg-btn red" id="bg-kick-yes">Masadan At</button></div></div></div>' +
     '<div id="bg-modal"><div class="bg-dlg"><h3>Oyundan çıkılsın mı?</h3><p>Lobiye geri döneceksin.</p>' +
     '<div class="row"><button class="bg-btn gray" id="bg-stay">Vazgeç</button><button class="bg-btn red" id="bg-leave">Çık</button></div></div></div>' +
     '<div id="bg-side"><div id="bg-card"><div class="bg-title">ŞİŞE ÇEVİRMECE</div><div id="bg-result"></div></div>' +
@@ -993,6 +1015,42 @@ BottleGame.prototype._buildOverlay = function () {
     self.sfx.ensure(); self.sfx.pop();
   });
 
+  // 😊 Tepki: kendi başımdan uçar + masadakilere gider
+  this.emoEl = ui.querySelector('#bg-emo');
+  ui.querySelector('#bg-emo-btn').addEventListener('click', function () { self.sfx.ensure(); self.sfx.pop(); self.emoEl.classList.toggle('show'); });
+  this.emoEl.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var now = Date.now(); if (now - (self._lastReact || 0) < 700) return; self._lastReact = now;
+    self.emoEl.classList.remove('show');
+    self.showReaction(self.meId, b.textContent);
+    self.app.fire('bg:react', b.textContent);
+  });
+  // Davet: Flutter arkadaş/DM listesini açar
+  this.invBtn = ui.querySelector('#bg-inv');
+  this.invBtn.addEventListener('click', function () {
+    self.sfx.ensure(); self.sfx.pop();
+    if (self.roomInfo && self.roomInfo.id) self._post('invite', { roomId: self.roomInfo.id, roomName: self.roomInfo.name || '' });
+  });
+  // Kilit (sadece oda sahibi)
+  this.lockBtn = ui.querySelector('#bg-lock');
+  this.lockBtn.addEventListener('click', function () { self.sfx.ensure(); self.sfx.pop(); self.app.fire('bg:lock', !self.closed); });
+  // Oyuncuyu masadan at (oda sahibi avatara dokunur)
+  this.kickEl = ui.querySelector('#bg-kick');
+  ui.querySelector('#bg-kick-no').addEventListener('click', function () { self.kickEl.classList.remove('show'); });
+  ui.querySelector('#bg-kick-yes').addEventListener('click', function () {
+    self.kickEl.classList.remove('show');
+    if (self._kickId) self.app.fire('bg:kick', self._kickId);
+  });
+  ui.addEventListener('click', function (e) {
+    var t = e.target.closest('.bg-tag'); if (!t) return;
+    var s = null;
+    self.seats.forEach(function (x) { if (x.tag === t) s = x; });
+    if (!s || !s.player || s.isMe || !self._remote || self.ownerId !== self.meId) return;
+    self._kickId = s.player.id;
+    ui.querySelector('#bg-kick-t').textContent = s.player.name + ' masadan atılsın mı?';
+    self.kickEl.classList.add('show');
+  });
+
   this.micBtn = ui.querySelector('#bg-mic');
   this.roomBtn = ui.querySelector('#bg-room');
   this.sfxBtn = ui.querySelector('#bg-sfx');
@@ -1047,6 +1105,7 @@ BottleGame.prototype._leave = function () {
 BottleGame.prototype.setRemote = function (on) {
   this._remote = !!on;
   if (this.devEl) [].forEach.call(this.devEl.querySelectorAll('.dv'), function (x) { x.style.display = on ? 'none' : ''; });
+  this._updateButtons();
 };
 
 BottleGame.prototype.setMic = function (on) { this.micOn = !!on; if (this.micBtn) this.micBtn.classList.toggle('off', !this.micOn); this._renderOnline(); };
@@ -1056,9 +1115,41 @@ BottleGame.prototype._banner = function (html) {
   this.bannerEl.innerHTML = html || '<span class="bg-hint">Oda sahibi şişeyi çevirir</span>';
 };
 
+// Konuşanlar (LiveKit): avatarda ses dalgası
+BottleGame.prototype.setSpeaking = function (ids) {
+  var set = {};
+  (ids || []).forEach(function (i) { set[String(i)] = true; });
+  this.seats.forEach(function (s) { if (s.tag) s.tag.classList.toggle('talk', !!(s.player && set[s.player.id])); });
+};
+
+// Emoji tepkisi: oyuncunun başından uçar (sadece masadaki oyuncular, izinli emojiler)
+var BG_EMO_OK = { '😂': 1, '😍': 1, '🔥': 1, '😱': 1, '👏': 1, '❤️': 1, '🤔': 1, '😡': 1 };
+BottleGame.prototype.showReaction = function (uid, emo) {
+  if (!BG_EMO_OK[emo] || this.mode !== 'table') return;
+  var seat = null;
+  this.seats.forEach(function (s) { if (s.player && s.player.id === String(uid)) seat = s; });
+  if (!seat || !seat.tag || seat.tag.style.visibility === 'hidden') return;
+  var r = seat.tag.getBoundingClientRect();
+  var el = document.createElement('span');
+  el.className = 'bg-fly';
+  el.textContent = emo;
+  el.style.left = (r.left + r.width / 2) + 'px';
+  el.style.top = (r.top - 6) + 'px';
+  el.style.setProperty('--dx', ((Math.random() * 40) - 20).toFixed(0) + 'px');
+  this.ui.appendChild(el);
+  setTimeout(function () { el.remove(); }, 1900);
+};
+
+BottleGame.prototype.setClosed = function (c) {
+  this.closed = !!c;
+  if (this.lockBtn) { this.lockBtn.classList.toggle('on', this.closed); this.lockBtn.title = this.closed ? 'Masa kilitli (aç)' : 'Masayı kilitle'; }
+};
+
 BottleGame.prototype._updateButtons = function () {
   if (!this.spinBtn) return;
   var isOwner = !this.ownerId || !this.meId || this.ownerId === this.meId;
+  if (this.lockBtn) this.lockBtn.style.display = this._remote && isOwner ? '' : 'none';
+  if (this.invBtn) this.invBtn.style.display = this._remote ? '' : 'none';
   this.spinBtn.style.display = isOwner ? '' : 'none';
   this.nextBtn.style.display = isOwner && this.state === 'question' ? '' : 'none';
   this.spinBtn.disabled = this.state !== 'idle';
@@ -1130,6 +1221,7 @@ BottleGame.prototype._api = function () {
     enterRoom: function (room) { self.enterRoom(room); },
     setMicStates: function (map) { self.setMicStates(map); }, // {userId: true/false}    // odadaki herkes [{id,name,avatar,gender}]        // Flutter: Android/iOS geri tuşu (PopScope) → onay sor              // Flutter: mikrofon gerçekten açıldı/kapandı
     setRoomAudio: function (on) { self.setRoomAudio(on); },  // Flutter: oda sesi açık/kapalı
+    setSpeaking: function (ids) { self.setSpeaking(ids); },   // Flutter (LiveKit): konuşan kullanıcı id'leri
     pause: function () { self.pause(); },
     resume: function () { self.resume(); },
     destroy: function () { self.app.destroy(); },
