@@ -747,7 +747,7 @@ BottleLobby.prototype.setKeyboard = function (h) {
   var open = h > 0;
   if (open !== this._kbOpen) {
     this._kbOpen = open;
-    if (this.game) { if (open) this.game.pause(); else this.game.resume(); }
+    if (this.game) this.game.setLowPower(open);
   }
   if (open) {
     var a = document.activeElement;

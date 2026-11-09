@@ -216,7 +216,7 @@ BottleGame.prototype._buildCamera = function () {
   this.look = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };
   this._placeCamera();
   var self = this;
-  this._onResize = function () { self._placeCamera(); };
+  this._onResize = function () { self._placeCamera(); self.app.renderNextFrame = true; };
   window.addEventListener('resize', this._onResize);
 
   // Parmakla (ya da fareyle) sağa-sola / yukarı-aşağı bak
@@ -268,7 +268,7 @@ BottleGame.prototype.setMode = function (mode) {
     this.look.yaw = this.look.pitch = this.look.tyaw = this.look.tpitch = 0;
   }
   if (this.ui) this.ui.style.display = lobby ? 'none' : '';
-  this.app.autoRender = !lobby && !this._paused; // lobide 30 FPS (pil dostu)
+  this.app.autoRender = !lobby && !this._paused && !this._lowPower; // lobide 30 FPS (pil dostu)
   // Lobide 3D sadece arka plan → daha düşük çözünürlük (daha hızlı, pil dostu)
   var dpr = window.devicePixelRatio || 1;
   this.app.graphicsDevice.maxPixelRatio = Math.min(dpr, lobby ? 1.25 : 1.75);
@@ -798,9 +798,11 @@ BottleGame.prototype.update = function (dt) {
     this.bottle.setEulerAngles(0, this.bottleYaw * pc.math.RAD_TO_DEG, 0);
     this._applyCamera();
     this._lobbyF = (this._lobbyF || 0) + 1;
-    if (!this._paused) this.app.renderNextFrame = (this._lobbyF & 1) === 0;
+    if (!this._paused && this._lobbyF % (this._lowPower ? 4 : 2) === 0) this.app.renderNextFrame = true;
     return;
   }
+
+  if (this._lowPower && !this._paused && ++this._lpF % 4 === 0) this.app.renderNextFrame = true;
 
   if (this.spin) {
     var sp = this.spin;
@@ -1216,6 +1218,16 @@ BottleGame.prototype._updateButtons = function () {
 };
 
 // ════════════════════════ YAŞAM DÖNGÜSÜ ════════════════════════
+// Klavye açıkken: çizim tamamen durmaz, yavaşlar (kasma yok, ekran boş kalmaz)
+BottleGame.prototype.setLowPower = function (on) {
+  on = !!on;
+  if (on === !!this._lowPower) return;
+  this._lowPower = on;
+  this._lpF = 0;
+  if (!this._paused) this.app.autoRender = !on && this.mode !== 'lobby';
+  this.app.renderNextFrame = true;
+};
+
 BottleGame.prototype.pause = function () {
   this.sfx.stopRoll();
   if (this.sfx.ctx) this.sfx.ctx.suspend();
@@ -1228,7 +1240,7 @@ BottleGame.prototype.resume = function () {
   if (!this._paused) return;
   this._paused = false;
   this.app.timeScale = 1;
-  this.app.autoRender = this.mode !== 'lobby';
+  this.app.autoRender = this.mode !== 'lobby' && !this._lowPower;
   if (this.sfx.ctx) this.sfx.ctx.resume();
   if (this.spin) this.sfx.startRoll();
 };
